@@ -237,11 +237,11 @@ const SearchForm = ({ mode }: SearchFormProps) => {
               >
                 {isRecording ? (
                   <div className="relative">
-                    <Mic className="h-5 w-5" />
+                    <Mic className="h-6 w-6" />
                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
                   </div>
                 ) : (
-                  <Mic className="h-5 w-5" />
+                  <Mic className="h-6 w-6" />
                 )}
               </button>
             </div>
