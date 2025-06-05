@@ -19,8 +19,13 @@ interface HandlerResponse {
   body: string;
 }
 
+// Check if API key is available
+if (!process.env.ELEVENLABS_API_KEY) {
+  console.error('ELEVENLABS_API_KEY environment variable is not set');
+}
+
 const eleven = new ElevenLabsClient({
-  apiKey: process.env.VITE_ELEVEN_API_KEY!,
+  apiKey: process.env.ELEVENLABS_API_KEY!,
 });
 
 const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
@@ -31,6 +36,14 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
     return {
       statusCode: 400,
       body: JSON.stringify({ error: 'No audio data provided' }),
+    };
+  }
+
+  if (!process.env.ELEVENLABS_API_KEY) {
+    console.error('Missing ELEVENLABS_API_KEY environment variable');
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Server configuration error - missing API key' }),
     };
   }
 
@@ -66,7 +79,7 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
     const elevenRes = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
       headers: {
-        'xi-api-key': process.env.VITE_ELEVEN_API_KEY!,
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
         ...form.getHeaders(),
       },
       body: form as any,
