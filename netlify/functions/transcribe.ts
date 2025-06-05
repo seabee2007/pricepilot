@@ -20,7 +20,7 @@ interface HandlerResponse {
 }
 
 const eleven = new ElevenLabsClient({
-  apiKey: process.env.ELEVENLABS_API_KEY!,
+  apiKey: process.env.VITE_ELEVEN_API_KEY!,
 });
 
 const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
@@ -66,7 +66,7 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
     const elevenRes = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
       headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+        'xi-api-key': process.env.VITE_ELEVEN_API_KEY!,
         ...form.getHeaders(),
       },
       body: form as any,
