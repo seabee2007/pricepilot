@@ -43,14 +43,8 @@
 }
 
 @layer base {
-  :root {
-    color-scheme: light;
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-  }
-
-  .dark {
-    color-scheme: dark;
+  body {
+    @apply bg-background text-foreground;
   }
 }
 
@@ -95,4 +89,18 @@
 @keyframes slideUp {
   from { transform: translateY(10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+/* Dark mode chart styles */
+.dark .recharts-cartesian-grid-horizontal line,
+.dark .recharts-cartesian-grid-vertical line {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+
+.dark .recharts-text {
+  fill: #9ca3af;
+}
+
+.dark .recharts-tooltip-wrapper {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
 }
