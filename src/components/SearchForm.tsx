@@ -304,7 +304,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
 
                 {/* Condition Filter */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block text-center">
+                  <label className="block text-lg font-bold text-gray-700 dark:text-gray-300 text-center">
                     Item Condition
                   </label>
                   <div className="flex flex-wrap justify-center gap-4">
@@ -327,7 +327,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
                 
                 {/* Shipping and Purchase Options */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block text-center">
+                  <label className="block text-lg font-bold text-gray-700 dark:text-gray-300 text-center">
                     Shipping & Purchase Options
                   </label>
                   <div className="flex flex-wrap justify-center gap-4">
