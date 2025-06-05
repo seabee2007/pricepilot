@@ -35,6 +35,7 @@ export interface ItemSummary {
 }
 
 export interface SearchFilters {
+  category?: string;
   conditionIds?: number[];
   freeShipping?: boolean;
   sellerLocation?: string;

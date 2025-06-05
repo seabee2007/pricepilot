@@ -42,6 +42,9 @@ export default {
           750: 'rgb(40, 44, 52)',
         },
       },
+      screens: {
+        'xs': '480px',
+      },
     },
   },
   plugins: [],
