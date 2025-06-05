@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Compass, Moon, Sun, Menu, X, Heart, User, LogOut } from 'lucide-react';
+import { Moon, Sun, Menu, X, Heart, User, LogOut } from 'lucide-react';
 import Button from './ui/Button';
 import { getCurrentUser, signOut, Profile, getProfile } from '../lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import toast from 'react-hot-toast';
+import logo from '../assets/images/artwork.png';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -85,7 +86,7 @@ const Layout = ({ children }: LayoutProps) => {
           <div className="flex justify-between h-16">
             <div className="flex">
               <Link to="/" className="flex-shrink-0 flex items-center">
-                <Compass className="h-8 w-8 text-blue-600 dark:text-blue-500" />
+                <img src={logo} alt="PricePilot Logo" className="h-8 w-auto" />
                 <span className="ml-2 text-xl font-bold text-gray-900 dark:text-gray-100">PricePilot</span>
               </Link>
               <nav className="hidden sm:ml-6 sm:flex sm:space-x-8">
@@ -243,7 +244,7 @@ const Layout = ({ children }: LayoutProps) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col items-center justify-center">
             <div className="flex items-center">
-              <Compass className="h-6 w-6 text-blue-600 dark:text-blue-500" />
+              <img src={logo} alt="PricePilot Logo" className="h-6 w-auto" />
               <span className="ml-2 text-lg font-semibold text-gray-900 dark:text-gray-100">PricePilot</span>
             </div>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
