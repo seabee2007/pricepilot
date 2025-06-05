@@ -8,16 +8,20 @@ import LocationSelector from './LocationSelector';
 import { SearchMode, SearchFilters } from '../types';
 import { LocationData } from '../lib/location';
 import toast from 'react-hot-toast';
+import MicRecorder from 'mic-recorder-to-mp3';
 
 interface SearchFormProps {
   mode: SearchMode;
 }
+
+const Mp3Recorder = new MicRecorder({ bitRate: 128 });
 
 const SearchForm = ({ mode }: SearchFormProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [loading, setLoading] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   
@@ -29,6 +33,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   const [buyItNowOnly, setBuyItNowOnly] = useState(false);
   const [userLocation, setUserLocation] = useState<LocationData>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [buyingFormats, setBuyingFormats] = useState<string[]>([]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,36 +41,16 @@ const SearchForm = ({ mode }: SearchFormProps) => {
     if (!query.trim()) return;
     
     // Build filters object
-    const filters: SearchFilters = {};
-    
-    if (category !== 'all') {
-      filters.category = category;
-    }
-    
-    if (conditionIds.length > 0) {
-      filters.conditionIds = conditionIds;
-    }
-    
-    if (freeShipping) {
-      filters.freeShipping = true;
-    }
-    
-    if (sellerLocation) {
-      filters.sellerLocation = sellerLocation;
-    }
-    
-    if (buyItNowOnly) {
-      filters.buyItNowOnly = true;
-    }
-    
-    // Add location data for better search results
-    if (userLocation.postalCode) {
-      filters.postalCode = userLocation.postalCode;
-    }
-    
-    if (userLocation.countryCode) {
-      filters.countryCode = userLocation.countryCode;
-    }
+    const filters: SearchFilters = {
+      conditionIds,
+      buyingFormats,
+      category,
+      freeShipping,
+      sellerLocation,
+      buyItNowOnly,
+      postalCode: userLocation.postalCode,
+      countryCode: userLocation.countryCode
+    };
     
     // Convert filters to URL-friendly format
     const filtersParam = encodeURIComponent(JSON.stringify(filters));
@@ -77,95 +62,59 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   // Start recording from mic
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e: BlobEvent) => {
-        audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        // Stop all tracks to release microphone
-        stream.getTracks().forEach(track => track.stop());
-        
-        try {
-          // Combine chunks into one Blob
-          const audioBlob = new Blob(audioChunksRef.current, {
-            type: 'audio/webm',
-          });
-          
-          if (audioBlob.size === 0) {
-            toast.error('No audio recorded. Please try again.');
-            return;
-          }
-          
-          const arrayBuffer = await audioBlob.arrayBuffer();
-
-          // POST raw bytes to /.netlify/functions/transcribe
-          const res = await fetch('/.netlify/functions/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream' },
-            body: arrayBuffer,
-          });
-          
-          if (!res.ok) {
-            const errorData = await res.json();
-            console.error('Transcription failed', errorData);
-            toast.error(`Transcription failed: ${errorData.error || 'Unknown error'}`);
-            return;
-          }
-          
-          const { text } = await res.json();
-          if (text && text.trim()) {
-            setQuery(text.trim());
-            toast.success('Voice search transcribed successfully!');
-          } else {
-            toast.error('No speech detected. Please try again.');
-          }
-        } catch (error: any) {
-          console.error('Transcription error:', error);
-          toast.error(`Transcription failed: ${error.message}`);
-        }
-      };
-
-      recorder.onerror = (event: any) => {
-        console.error('MediaRecorder error:', event.error);
-        toast.error('Recording failed. Please try again.');
-        setIsRecording(false);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
+      await Mp3Recorder.start();
       setIsRecording(true);
-      toast.success('Recording started. Click the mic again to stop and transcribe.');
     } catch (err: any) {
-      console.error('Microphone access error:', err);
-      
-      if (err.name === 'NotAllowedError') {
-        toast.error('Microphone access denied. Please allow microphone access and try again.');
-      } else if (err.name === 'NotFoundError') {
-        toast.error('No microphone found. Please check your audio devices.');
-      } else {
-        toast.error('Voice search unavailable. Please check your microphone.');
-      }
-      
+      console.error('Microphone permission error:', err);
+      toast.error('Could not start recording. Check microphone permission.');
       setIsRecording(false);
     }
   };
 
-  // Stop recording
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
+  // Stop recording, get MP3 blob, send to ElevenLabs
+  const stopRecording = async () => {
+    setLoading(true);
+    try {
+      const [buffer, blob] = await Mp3Recorder.stop().getMp3();
+      setIsRecording(false);
+
+      // Convert blob to ArrayBuffer for fetch
+      const arrayBuffer = await blob.arrayBuffer();
+
+      // POST raw MP3 bytes to /api/transcribe
+      const response = await fetch('/.netlify/functions/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: arrayBuffer,
+      });
+
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        console.error('Transcription failed:', errorJson);
+        toast.error('Voice transcription failed. Try again.');
+        setLoading(false);
+        return;
+      }
+
+      const { text } = await response.json();
+      setLoading(false);
+      if (text && text.length) {
+        setQuery(text.trim());
+        toast.success('Voice search transcribed successfully!');
+      } else {
+        toast.error('Could not transcribe speech. Try again.');
+      }
+    } catch (err: any) {
+      console.error('Error stopping recorder:', err);
+      toast.error('Recording error. Please try again.');
+      setLoading(false);
+      setIsRecording(false);
     }
-    setIsRecording(false);
   };
 
   const handleVoiceSearch = async () => {
     if (isRecording) {
-      stopRecording();
+      await stopRecording();
     } else {
       await startRecording();
     }
@@ -227,7 +176,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
               <button
                 type="button"
                 onClick={handleVoiceSearch}
-                disabled={isRecording}
+                disabled={loading}
                 title={isRecording ? "Click to stop recording" : "Click to start voice search"}
                 className={`absolute right-3 top-1/2 transform -translate-y-1/2 transition-colors duration-200 ${
                   isRecording 

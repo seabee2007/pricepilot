@@ -1,88 +1,55 @@
-// Netlify function for ElevenLabs Speech-to-Text
-export const handler = async (event: any, context: any) => {
-  // Enable CORS
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  };
+import { Handler } from '@netlify/functions';
+import fetch from 'node-fetch';
+import FormData from 'form-data';
 
-  // Handle preflight requests
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers,
-      body: '',
-    };
-  }
-
+const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
-      headers,
       body: JSON.stringify({ error: 'Method not allowed' }),
     };
   }
 
   try {
-    if (!process.env.ELEVEN_API_KEY) {
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: 'ElevenLabs API key not configured' }),
-      };
-    }
+    // The request body is raw MP3 bytes
+    const audioBuffer = Buffer.from(event.body!, 'base64');
 
-    // Read the raw bytes from the request body
-    const audioBuffer = Buffer.from(event.body || '', 'base64');
-    
-    if (audioBuffer.length === 0) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'No audio data provided' }),
-      };
-    }
-
-    // Build multipart/form-data manually
+    // Build multipart/form-data for ElevenLabs
     const form = new FormData();
-    form.append('model_id', 'scribe_v1'); // required
-    form.append('file', new Blob([audioBuffer]), 'recording.webm');
+    form.append('model_id', 'scribe_v1'); // per API docs
+    form.append('file', audioBuffer, { filename: 'speech.mp3' });
 
-    // POST to ElevenLabs STT endpoint
-    const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+    const elevenRes = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
       headers: {
-        'xi-api-key': process.env.ELEVEN_API_KEY!,
-        // Note: fetch will set the correct Content-Type with FormData's boundary
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+        ...form.getHeaders(),
       },
-      body: form,
+      body: form as any,
     });
 
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      console.error('ElevenLabs STT error:', errorJson);
+    if (!elevenRes.ok) {
+      const errJson = await elevenRes.json().catch(() => ({}));
+      console.error('ElevenLabs error:', errJson);
       return {
-        statusCode: response.status,
-        headers,
-        body: JSON.stringify({ error: errorJson }),
+        statusCode: elevenRes.status,
+        body: JSON.stringify({ error: errJson }),
       };
     }
 
-    const json = await response.json();
-    // json has shape: { language_code, language_probability, text, words: [ … ] }
+    const json = await elevenRes.json();
+    // ElevenLabs returns { text: "…", words: […], language_code: "en" }
     return {
       statusCode: 200,
-      headers,
       body: JSON.stringify({ text: json.text }),
     };
-
   } catch (err: any) {
-    console.error('Transcription handler error:', err);
+    console.error('Transcription handler failed:', err);
     return {
       statusCode: 500,
-      headers,
       body: JSON.stringify({ error: err.message }),
     };
   }
-}; 
+};
+
+export { handler }; 
