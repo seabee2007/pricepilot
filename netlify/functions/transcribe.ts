@@ -50,15 +50,15 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
     console.log('Audio buffer size:', audioBuffer.length, 'bytes');
     console.log('Audio MIME type:', request.mimeType);
 
-    // Build a multipart/form-data request, per ElevenLabs docs
+    // Build a multipart/form-data request with snake_case keys as per ElevenLabs API
     const form = new FormData();
     form.append('file', audioBuffer, {
       filename: 'speech.mp3',
-      contentType: request.mimeType,
+      contentType: request.mimeType || 'audio/mpeg',
     });
-    form.append('modelId', 'scribe_v1');          // required
-    form.append('languageCode', 'eng');           // optional, "eng" = English
-    form.append('diarize', 'false');              // optional, false means no speaker tagging
+    form.append('model_id', 'scribe_v1');        // snake_case
+    form.append('language_code', 'eng');         // snake_case
+    form.append('diarize', 'false');             // unchanged as it's already correct
 
     console.log('Sending request to ElevenLabs with form data headers:', form.getHeaders());
 
