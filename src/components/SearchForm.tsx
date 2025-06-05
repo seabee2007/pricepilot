@@ -7,6 +7,7 @@ import Checkbox from './ui/Checkbox';
 import LocationSelector from './LocationSelector';
 import { SearchMode, SearchFilters } from '../types';
 import { LocationData } from '../lib/location';
+import { haptic } from '../lib/haptics';
 import toast from 'react-hot-toast';
 import { Recorder } from 'vmsg';
 
@@ -71,6 +72,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   // Start recording from mic
   const startRecording = async () => {
     if (!isRecorderReady) {
+      haptic('error');
       toast.error('Voice recorder is not ready. Please try again.');
       return;
     }
@@ -80,9 +82,11 @@ const SearchForm = ({ mode }: SearchFormProps) => {
       await recorder.initAudio();
       await recorder.initWorker();
       recorder.startRecording();
+      haptic('medium');
       toast.success('Recording started. Click the mic again to stop and transcribe.');
     } catch (err: any) {
       console.error('Cannot start recording:', err);
+      haptic('error');
       toast.error('Microphone access is required for voice search.');
       setIsRecording(false);
     }
@@ -92,6 +96,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   const stopRecording = async () => {
     try {
       setIsLoading(true);
+      haptic('light');
       const blob = await recorder.stopRecording();
       setIsRecording(false);
 
@@ -127,6 +132,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
           statusText: response.statusText,
           error: errorJson,
         });
+        haptic('error');
         toast.error(`Voice transcription failed (${response.status}). Try again.`);
         setIsLoading(false);
         return;
@@ -136,12 +142,15 @@ const SearchForm = ({ mode }: SearchFormProps) => {
       setIsLoading(false);
       if (text && text.trim()) {
         setQuery(text.trim());
+        haptic('success');
         toast.success('Voice search transcribed successfully!');
       } else {
+        haptic('warning');
         toast.error('Could not transcribe speech. Try again.');
       }
     } catch (err: any) {
       console.error('Error processing recording:', err);
+      haptic('error');
       toast.error('Recording failed. Please try again.');
       setIsLoading(false);
       setIsRecording(false);
