@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mic, Search, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -8,19 +8,23 @@ import LocationSelector from './LocationSelector';
 import { SearchMode, SearchFilters } from '../types';
 import { LocationData } from '../lib/location';
 import toast from 'react-hot-toast';
-import MicRecorder from 'mic-recorder-to-mp3';
+import { Recorder } from 'vmsg';
 
 interface SearchFormProps {
   mode: SearchMode;
 }
 
-const Mp3Recorder = new MicRecorder({ bitRate: 128 });
+const recorder = new Recorder({
+  wasmURL: '/vmsg.wasm', // We'll need to copy this file to the public directory
+  shimURL: '/vmsg.js',   // And this one too
+});
 
 const SearchForm = ({ mode }: SearchFormProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecorderReady, setIsRecorderReady] = useState(false);
   
   // Filter states
   const [category, setCategory] = useState('all');
@@ -30,7 +34,16 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   const [buyItNowOnly, setBuyItNowOnly] = useState(false);
   const [userLocation, setUserLocation] = useState<LocationData>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [buyingFormats, setBuyingFormats] = useState<string[]>([]);
+
+  useEffect(() => {
+    // Initialize recorder
+    recorder.init()
+      .then(() => setIsRecorderReady(true))
+      .catch(err => {
+        console.error('Failed to initialize recorder:', err);
+        toast.error('Could not initialize voice recording. Please check microphone permissions.');
+      });
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +53,6 @@ const SearchForm = ({ mode }: SearchFormProps) => {
     // Build filters object
     const filters: SearchFilters = {
       conditionIds,
-      buyingFormats,
       category,
       freeShipping,
       sellerLocation,
@@ -58,9 +70,16 @@ const SearchForm = ({ mode }: SearchFormProps) => {
 
   // Start recording from mic
   const startRecording = async () => {
+    if (!isRecorderReady) {
+      toast.error('Voice recorder is not ready. Please try again.');
+      return;
+    }
+
     try {
-      await Mp3Recorder.start();
       setIsRecording(true);
+      await recorder.initAudio();
+      await recorder.initWorker();
+      recorder.startRecording();
       toast.success('Recording started. Click the mic again to stop and transcribe.');
     } catch (err: any) {
       console.error('Cannot start recording:', err);
@@ -69,11 +88,11 @@ const SearchForm = ({ mode }: SearchFormProps) => {
     }
   };
 
-  // Stop recording, get MP3 blob, send to ElevenLabs
+  // Stop recording, get blob, send to ElevenLabs
   const stopRecording = async () => {
-    setIsLoading(true);
     try {
-      const [buffer, blob] = await Mp3Recorder.stop().getMp3();
+      setIsLoading(true);
+      const blob = await recorder.stopRecording();
       setIsRecording(false);
 
       // Convert blob to ArrayBuffer
