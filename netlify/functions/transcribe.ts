@@ -6,6 +6,12 @@ import 'dotenv/config';
 interface HandlerEvent {
   body: string | null;
   isBase64Encoded?: boolean;
+  headers?: { [key: string]: string };
+}
+
+interface AudioRequest {
+  audio: string;
+  mimeType: string;
 }
 
 interface HandlerResponse {
@@ -18,7 +24,10 @@ const eleven = new ElevenLabsClient({
 });
 
 const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
+  console.log('Request headers:', event.headers);
+  
   if (!event.body) {
+    console.log('No body provided in request');
     return {
       statusCode: 400,
       body: JSON.stringify({ error: 'No audio data provided' }),
@@ -26,15 +35,32 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
   }
 
   try {
-    // Read raw MP3 bytes from the request body
-    const audioBuffer = Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'binary');
+    // Parse the JSON request body
+    const request: AudioRequest = JSON.parse(event.body);
+    
+    if (!request.audio) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'No audio data provided in request body' }),
+      };
+    }
+
+    // Convert base64 to buffer
+    const audioBuffer = Buffer.from(request.audio, 'base64');
+    console.log('Audio buffer size:', audioBuffer.length, 'bytes');
+    console.log('Audio MIME type:', request.mimeType);
 
     // Build a multipart/form-data request, per ElevenLabs docs
     const form = new FormData();
-    form.append('file', audioBuffer, { filename: 'speech.mp3' });
+    form.append('file', audioBuffer, {
+      filename: 'speech.mp3',
+      contentType: request.mimeType,
+    });
     form.append('modelId', 'scribe_v1');          // required
     form.append('languageCode', 'eng');           // optional, "eng" = English
     form.append('diarize', 'false');              // optional, false means no speaker tagging
+
+    console.log('Sending request to ElevenLabs with form data headers:', form.getHeaders());
 
     // Send to ElevenLabs' /v1/speech-to-text endpoint
     const elevenRes = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
@@ -49,14 +75,20 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
     if (!elevenRes.ok) {
       const errJson = await elevenRes.json().catch(() => ({}));
       console.error('ElevenLabs STT error:', errJson);
+      console.error('ElevenLabs response status:', elevenRes.status);
+      console.error('ElevenLabs response headers:', elevenRes.headers);
       return {
         statusCode: elevenRes.status,
-        body: JSON.stringify({ error: errJson }),
+        body: JSON.stringify({ 
+          error: errJson,
+          message: 'Failed to transcribe audio',
+          status: elevenRes.status,
+        }),
       };
     }
 
     const json = await elevenRes.json();
-    // json shape: { text: "...", words: [...], language_code: "eng", ... }
+    console.log('Successfully transcribed audio:', json);
     return {
       statusCode: 200,
       body: JSON.stringify({ text: json.text }),
@@ -65,7 +97,10 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
     console.error('Transcription handler error:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message }),
+      body: JSON.stringify({ 
+        error: err.message,
+        stack: err.stack,
+      }),
     };
   }
 };

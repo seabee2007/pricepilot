@@ -95,20 +95,39 @@ const SearchForm = ({ mode }: SearchFormProps) => {
       const blob = await recorder.stopRecording();
       setIsRecording(false);
 
-      // Convert blob to ArrayBuffer
-      const arrayBuffer = await blob.arrayBuffer();
+      // Convert blob to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise((resolve, reject) => {
+        reader.onload = () => {
+          const base64 = reader.result?.toString().split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(blob);
+      
+      const base64Data = await base64Promise;
 
       // POST to our /api/transcribe route
       const response = await fetch('/.netlify/functions/transcribe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: arrayBuffer,
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audio: base64Data,
+          mimeType: blob.type || 'audio/mpeg',
+        }),
       });
 
       if (!response.ok) {
         const errorJson = await response.json().catch(() => ({}));
-        console.error('Transcription failed:', errorJson);
-        toast.error('Voice transcription failed. Try again.');
+        console.error('Transcription failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorJson,
+        });
+        toast.error(`Voice transcription failed (${response.status}). Try again.`);
         setIsLoading(false);
         return;
       }
