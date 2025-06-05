@@ -40,6 +40,7 @@ export interface SearchFilters {
   sellerLocation?: string;
   buyItNowOnly?: boolean;
   postalCode?: string;
+  countryCode?: string;
 }
 
 export interface SavedSearch {

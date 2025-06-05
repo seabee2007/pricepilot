@@ -10,6 +10,131 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// Auth Types
+export interface Profile {
+  id: string;
+  email: string;
+  full_name?: string;
+  avatar_url?: string;
+  preferred_location?: string;
+  notification_preferences: {
+    email_alerts: boolean;
+    price_drops: boolean;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SignUpData {
+  email: string;
+  password: string;
+  fullName?: string;
+}
+
+export interface SignInData {
+  email: string;
+  password: string;
+}
+
+export interface ResetPasswordData {
+  email: string;
+}
+
+export interface UpdatePasswordData {
+  password: string;
+}
+
+// Authentication Functions
+export async function signUp({ email, password, fullName }: SignUpData) {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: fullName,
+      },
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function signIn({ email, password }: SignInData) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getCurrentUser() {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  
+  if (error) {
+    throw error;
+  }
+  
+  return user;
+}
+
+export async function getProfile(): Promise<Profile | null> {
+  const user = await getCurrentUser();
+  
+  if (!user) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateProfile(updates: Partial<Profile>) {
+  const user = await getCurrentUser();
+  
+  if (!user) {
+    throw new Error('No user logged in');
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', user.id)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
 export async function getSavedSearches(): Promise<SavedSearch[]> {
   const { data, error } = await supabase
     .from('saved_searches')
@@ -96,4 +221,28 @@ export async function savePriceHistory(
     console.error('Error saving price history:', error);
     throw error;
   }
+}
+
+export async function resetPassword({ email }: ResetPasswordData) {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updatePassword({ password }: UpdatePasswordData) {
+  const { data, error } = await supabase.auth.updateUser({
+    password: password,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }

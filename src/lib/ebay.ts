@@ -12,8 +12,8 @@ async function getOAuthToken(): Promise<string> {
     return tokenCache.access_token;
   }
 
-  const clientId = import.meta.env.VITE_EBAY_CLIENT_ID;
-  const clientSecret = import.meta.env.VITE_EBAY_CLIENT_SECRET;
+  const clientId = import.meta.env.VITE_EBAY_CLIENT_ID as string;
+  const clientSecret = import.meta.env.VITE_EBAY_CLIENT_SECRET as string;
 
   if (!clientId || !clientSecret) {
     throw new Error('Missing eBay API credentials');
@@ -53,18 +53,24 @@ async function getOAuthToken(): Promise<string> {
 function buildFilterString(filters: SearchFilters): string {
   const filterParts: string[] = [];
 
+  // Handle condition IDs properly - eBay expects specific condition codes
   if (filters.conditionIds && filters.conditionIds.length > 0) {
-    filterParts.push(`conditionIds:{${filters.conditionIds.join(',')}}}`);
+    // Build separate conditionIds filter for each condition
+    const conditionFilter = `conditionIds:{${filters.conditionIds.join(',')}}`;
+    filterParts.push(conditionFilter);
   }
   
+  // Use correct eBay API filter for free shipping
   if (filters.freeShipping) {
-    filterParts.push('maxDeliveryCost:0');
+    filterParts.push('shippingOptions:{FREE_SHIPPING}');
   }
   
+  // Use correct eBay API filter for seller location
   if (filters.sellerLocation) {
-    filterParts.push(`itemLocation:${filters.sellerLocation}`);
+    filterParts.push(`sellerLocation:{${filters.sellerLocation}}`);
   }
   
+  // Buy It Now filter is already correct
   if (filters.buyItNowOnly) {
     filterParts.push('buyingOptions:{FIXED_PRICE}');
   }
@@ -74,7 +80,9 @@ function buildFilterString(filters: SearchFilters): string {
 
 export async function searchLiveItems(
   query: string, 
-  filters: SearchFilters = {}
+  filters: SearchFilters = {},
+  pageSize: number = 50,
+  pageOffset: number = 0
 ): Promise<ItemSummary[]> {
   try {
     const token = await getOAuthToken();
@@ -89,10 +97,14 @@ export async function searchLiveItems(
     }
     
     if (filters.postalCode) {
-      url.searchParams.append('deliveryPostalCode', filters.postalCode);
+      url.searchParams.append('buyerPostalCode', filters.postalCode);
     }
     
-    url.searchParams.append('limit', '50');
+    url.searchParams.append('limit', pageSize.toString());
+    
+    if (pageOffset > 0) {
+      url.searchParams.append('offset', pageOffset.toString());
+    }
 
     const response = await fetch(url.toString(), {
       headers: {
@@ -103,7 +115,8 @@ export async function searchLiveItems(
     });
 
     if (!response.ok) {
-      throw new Error(`eBay API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -116,7 +129,9 @@ export async function searchLiveItems(
 
 export async function searchCompletedItems(
   query: string, 
-  filters: SearchFilters = {}
+  filters: SearchFilters = {},
+  pageSize: number = 50,
+  pageOffset: number = 0
 ): Promise<ItemSummary[]> {
   try {
     const token = await getOAuthToken();
@@ -124,13 +139,17 @@ export async function searchCompletedItems(
     
     const url = new URL('https://api.ebay.com/buy/browse/v1/item_summary/completed');
     url.searchParams.append('q', query);
-    url.searchParams.append('sort', '-price'); // Sort by price descending
+    url.searchParams.append('sort', 'price_desc');
     
     if (filterString) {
       url.searchParams.append('filter', filterString);
     }
     
-    url.searchParams.append('limit', '50');
+    url.searchParams.append('limit', pageSize.toString());
+    
+    if (pageOffset > 0) {
+      url.searchParams.append('offset', pageOffset.toString());
+    }
 
     const response = await fetch(url.toString(), {
       headers: {
@@ -141,7 +160,8 @@ export async function searchCompletedItems(
     });
 
     if (!response.ok) {
-      throw new Error(`eBay API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -167,4 +187,55 @@ export function calculateAveragePrice(items: ItemSummary[]): number {
   
   const sum = validPrices.reduce((total, price) => total + price, 0);
   return sum / validPrices.length;
+}
+
+/**
+ * Builds a canonical eBay Browse API search URL following the official pattern:
+ * GET https://api.ebay.com/buy/browse/v1/item_summary/search
+ *     ?q=<KEYWORDS>
+ *     &filter=<FILTER_EXPRESSIONS>
+ *     &sort=<SORT_ORDER>
+ *     &limit=<PAGE_SIZE>
+ *     &offset=<PAGE_OFFSET>
+ *     [&buyerPostalCode=<ZIP>]
+ */
+export function buildEbaySearchURL(
+  query: string,
+  filters: SearchFilters = {},
+  sortOrder: 'price' | 'price_desc' = 'price',
+  pageSize: number = 20,
+  pageOffset: number = 0,
+  isCompleted: boolean = false
+): string {
+  // 1) Base URL - live vs completed listings
+  const baseUrl = isCompleted 
+    ? 'https://api.ebay.com/buy/browse/v1/item_summary/completed'
+    : 'https://api.ebay.com/buy/browse/v1/item_summary/search';
+  
+  const url = new URL(baseUrl);
+  
+  // 2) URL-encoded keywords
+  url.searchParams.append('q', query);
+  
+  // 3) Build filter string
+  const filterString = buildFilterString(filters);
+  if (filterString) {
+    url.searchParams.append('filter', filterString);
+  }
+  
+  // 4) Sort order
+  url.searchParams.append('sort', sortOrder);
+  
+  // 5) Pagination
+  url.searchParams.append('limit', pageSize.toString());
+  if (pageOffset > 0) {
+    url.searchParams.append('offset', pageOffset.toString());
+  }
+  
+  // 6) Optional postal code param
+  if (filters.postalCode) {
+    url.searchParams.append('buyerPostalCode', filters.postalCode);
+  }
+  
+  return url.toString();
 }

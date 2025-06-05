@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mic, Search, Loader2 } from 'lucide-react';
 import Button from './ui/Button';
+import LocationSelector from './LocationSelector';
 import { SearchMode, SearchFilters } from '../types';
+import { LocationData } from '../lib/location';
+import toast from 'react-hot-toast';
 
 interface SearchFormProps {
   mode: SearchMode;
@@ -13,13 +16,15 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   
   // Filter states
   const [conditionIds, setConditionIds] = useState<number[]>([]);
   const [freeShipping, setFreeShipping] = useState(false);
   const [sellerLocation, setSellerLocation] = useState('');
   const [buyItNowOnly, setBuyItNowOnly] = useState(false);
-  const [postalCode, setPostalCode] = useState('');
+  const [userLocation, setUserLocation] = useState<LocationData>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,8 +50,13 @@ const SearchForm = ({ mode }: SearchFormProps) => {
       filters.buyItNowOnly = true;
     }
     
-    if (mode === 'buy' && postalCode) {
-      filters.postalCode = postalCode;
+    // Add location data for better search results
+    if (userLocation.postalCode) {
+      filters.postalCode = userLocation.postalCode;
+    }
+    
+    if (userLocation.countryCode) {
+      filters.countryCode = userLocation.countryCode;
     }
     
     // Convert filters to URL-friendly format
@@ -56,22 +66,100 @@ const SearchForm = ({ mode }: SearchFormProps) => {
     navigate(`/results?mode=${mode}&q=${encodeURIComponent(query)}&filters=${filtersParam}`);
   };
 
-  const handleVoiceSearch = async () => {
-    // This is a placeholder for voice search functionality
-    // In a real implementation, you would integrate with a voice API
-    setIsRecording(true);
-    
+  // Start recording from mic
+  const startRecording = async () => {
     try {
-      // Simulate voice recognition with a timeout
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e: BlobEvent) => {
+        audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        // Stop all tracks to release microphone
+        stream.getTracks().forEach(track => track.stop());
+        
+        try {
+          // Combine chunks into one Blob
+          const audioBlob = new Blob(audioChunksRef.current, {
+            type: 'audio/webm',
+          });
+          
+          if (audioBlob.size === 0) {
+            toast.error('No audio recorded. Please try again.');
+            return;
+          }
+          
+          const arrayBuffer = await audioBlob.arrayBuffer();
+
+          // POST raw bytes to /.netlify/functions/transcribe
+          const res = await fetch('/.netlify/functions/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: arrayBuffer,
+          });
+          
+          if (!res.ok) {
+            const errorData = await res.json();
+            console.error('Transcription failed', errorData);
+            toast.error(`Transcription failed: ${errorData.error || 'Unknown error'}`);
+            return;
+          }
+          
+          const { text } = await res.json();
+          if (text && text.trim()) {
+            setQuery(text.trim());
+            toast.success('Voice search transcribed successfully!');
+          } else {
+            toast.error('No speech detected. Please try again.');
+          }
+        } catch (error: any) {
+          console.error('Transcription error:', error);
+          toast.error(`Transcription failed: ${error.message}`);
+        }
+      };
+
+      recorder.onerror = (event: any) => {
+        console.error('MediaRecorder error:', event.error);
+        toast.error('Recording failed. Please try again.');
+        setIsRecording(false);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+      toast.success('Recording started. Click the mic again to stop and transcribe.');
+    } catch (err: any) {
+      console.error('Microphone access error:', err);
       
-      // Set a sample query
-      setQuery('iphone 13 pro max');
+      if (err.name === 'NotAllowedError') {
+        toast.error('Microphone access denied. Please allow microphone access and try again.');
+      } else if (err.name === 'NotFoundError') {
+        toast.error('No microphone found. Please check your audio devices.');
+      } else {
+        toast.error('Voice search unavailable. Please check your microphone.');
+      }
       
-    } catch (error) {
-      console.error('Voice search error:', error);
-    } finally {
       setIsRecording(false);
+    }
+  };
+
+  // Stop recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const handleVoiceSearch = async () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      await startRecording();
     }
   };
 
@@ -100,10 +188,18 @@ const SearchForm = ({ mode }: SearchFormProps) => {
               type="button"
               onClick={handleVoiceSearch}
               disabled={isRecording}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              title={isRecording ? "Click to stop recording" : "Click to start voice search"}
+              className={`absolute right-3 top-1/2 transform -translate-y-1/2 transition-colors duration-200 ${
+                isRecording 
+                  ? 'text-red-500 animate-pulse' 
+                  : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'
+              }`}
             >
               {isRecording ? (
-                <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                <div className="relative">
+                  <Mic className="h-5 w-5" />
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
+                </div>
               ) : (
                 <Mic className="h-5 w-5" />
               )}
@@ -122,13 +218,20 @@ const SearchForm = ({ mode }: SearchFormProps) => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-medium mb-3 text-gray-900 dark:text-gray-100">Filters</h3>
+        <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-gray-100">Search Filters</h3>
         
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Location Selector */}
+          <LocationSelector
+            onLocationChange={setUserLocation}
+            initialLocation={userLocation}
+            disabled={isLoading}
+          />
+
           {/* Condition Filter */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-              Condition
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+              Item Condition
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
@@ -152,7 +255,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
             </div>
           </div>
           
-          {/* Shipping and Location Filters */}
+          {/* Shipping and Purchase Options */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="flex items-center space-x-2 cursor-pointer">
@@ -179,7 +282,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
             </div>
           </div>
           
-          {/* Location Filter */}
+          {/* Seller Location Filter */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
               Seller Location
@@ -192,26 +295,15 @@ const SearchForm = ({ mode }: SearchFormProps) => {
               <option value="">Any Location</option>
               <option value="US">United States</option>
               <option value="CA">Canada</option>
-              <option value="UK">United Kingdom</option>
+              <option value="GB">United Kingdom</option>
               <option value="AU">Australia</option>
+              <option value="DE">Germany</option>
+              <option value="FR">France</option>
+              <option value="IT">Italy</option>
+              <option value="ES">Spain</option>
+              <option value="JP">Japan</option>
             </select>
           </div>
-          
-          {/* Postal Code (Buy Mode Only) */}
-          {mode === 'buy' && (
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                Your Postal Code (optional)
-              </label>
-              <input
-                type="text"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                placeholder="For local pickup & delivery estimates"
-                className="w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              />
-            </div>
-          )}
         </div>
       </div>
     </form>
