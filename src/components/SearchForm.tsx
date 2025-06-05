@@ -220,7 +220,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={mode === 'buy' ? "Enter your search keyword" : "What are you selling?"}
+                placeholder="Enter your search"
                 className="w-full px-4 py-3 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-white dark:focus:ring-blue-400 text-base"
                 required
               />
