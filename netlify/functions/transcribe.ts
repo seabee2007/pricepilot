@@ -1,6 +1,7 @@
-import { Handler } from '@netlify/functions';
-import fetch from 'node-fetch';
 import FormData from 'form-data';
+import fetch from 'node-fetch';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import 'dotenv/config';
 
 interface HandlerEvent {
   body: string | null;
@@ -12,7 +13,9 @@ interface HandlerResponse {
   body: string;
 }
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const eleven = new ElevenLabsClient({
+  apiKey: process.env.ELEVENLABS_API_KEY!,
+});
 
 const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
   if (!event.body) {
@@ -23,40 +26,46 @@ const handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
   }
 
   try {
-    // Convert base64 to buffer if needed
-    const audioBuffer = event.isBase64Encoded
-      ? Buffer.from(event.body, 'base64')
-      : Buffer.from(event.body);
+    // Read raw MP3 bytes from the request body
+    const audioBuffer = Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'binary');
 
-    // Send to ElevenLabs API
-    const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+    // Build a multipart/form-data request, per ElevenLabs docs
+    const form = new FormData();
+    form.append('file', audioBuffer, { filename: 'speech.mp3' });
+    form.append('modelId', 'scribe_v1');          // required
+    form.append('languageCode', 'eng');           // optional, "eng" = English
+    form.append('diarize', 'false');              // optional, false means no speaker tagging
+
+    // Send to ElevenLabs' /v1/speech-to-text endpoint
+    const elevenRes = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
       headers: {
-        'xi-api-key': ELEVENLABS_API_KEY || '',
-        'Content-Type': 'audio/webm',
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+        ...form.getHeaders(),
       },
-      body: audioBuffer,
+      body: form as any,
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('ElevenLabs API error:', error);
+    if (!elevenRes.ok) {
+      const errJson = await elevenRes.json().catch(() => ({}));
+      console.error('ElevenLabs STT error:', errJson);
       return {
-        statusCode: response.status,
-        body: JSON.stringify({ error: 'Speech-to-text conversion failed' }),
+        statusCode: elevenRes.status,
+        body: JSON.stringify({ error: errJson }),
       };
     }
 
-    const data = await response.json();
+    const json = await elevenRes.json();
+    // json shape: { text: "...", words: [...], language_code: "eng", ... }
     return {
       statusCode: 200,
-      body: JSON.stringify({ text: data.text }),
+      body: JSON.stringify({ text: json.text }),
     };
-  } catch (error: any) {
-    console.error('Transcription error:', error);
+  } catch (err: any) {
+    console.error('Transcription handler error:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message || 'Internal server error' }),
+      body: JSON.stringify({ error: err.message }),
     };
   }
 };

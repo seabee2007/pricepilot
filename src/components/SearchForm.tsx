@@ -8,18 +8,19 @@ import LocationSelector from './LocationSelector';
 import { SearchMode, SearchFilters } from '../types';
 import { LocationData } from '../lib/location';
 import toast from 'react-hot-toast';
+import MicRecorder from 'mic-recorder-to-mp3';
 
 interface SearchFormProps {
   mode: SearchMode;
 }
+
+const Mp3Recorder = new MicRecorder({ bitRate: 128 });
 
 const SearchForm = ({ mode }: SearchFormProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   
   // Filter states
   const [category, setCategory] = useState('all');
@@ -58,95 +59,60 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   // Start recording from mic
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e: BlobEvent) => {
-        audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        // Stop all tracks to release microphone
-        stream.getTracks().forEach(track => track.stop());
-        
-        try {
-          // Combine chunks into one Blob
-          const audioBlob = new Blob(audioChunksRef.current, {
-            type: 'audio/webm',
-          });
-          
-          if (audioBlob.size === 0) {
-            toast.error('No audio recorded. Please try again.');
-            return;
-          }
-          
-          const arrayBuffer = await audioBlob.arrayBuffer();
-
-          // POST raw bytes to /.netlify/functions/transcribe
-          const res = await fetch('/.netlify/functions/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream' },
-            body: arrayBuffer,
-          });
-
-          if (!res.ok) {
-            const errorData = await res.json();
-            console.error('Transcription failed', errorData);
-            toast.error(`Transcription failed: ${errorData.error || 'Unknown error'}`);
-            return;
-          }
-
-          const { text } = await res.json();
-          if (text && text.trim()) {
-            setQuery(text.trim());
-            toast.success('Voice search transcribed successfully!');
-          } else {
-            toast.error('No speech detected. Please try again.');
-          }
-        } catch (error: any) {
-          console.error('Transcription error:', error);
-          toast.error(`Transcription failed: ${error.message}`);
-        }
-      };
-
-      recorder.onerror = (event: any) => {
-        console.error('MediaRecorder error:', event.error);
-        toast.error('Recording failed. Please try again.');
-        setIsRecording(false);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
+      await Mp3Recorder.start();
       setIsRecording(true);
       toast.success('Recording started. Click the mic again to stop and transcribe.');
     } catch (err: any) {
-      console.error('Microphone access error:', err);
-      
-      if (err.name === 'NotAllowedError') {
-        toast.error('Microphone access denied. Please allow microphone access and try again.');
-      } else if (err.name === 'NotFoundError') {
-        toast.error('No microphone found. Please check your audio devices.');
-      } else {
-        toast.error('Voice search unavailable. Please check your microphone.');
-      }
-      
+      console.error('Cannot start recording:', err);
+      toast.error('Microphone access is required for voice search.');
       setIsRecording(false);
     }
   };
 
-  // Stop recording
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
+  // Stop recording, get MP3 blob, send to ElevenLabs
+  const stopRecording = async () => {
+    setIsLoading(true);
+    try {
+      const [buffer, blob] = await Mp3Recorder.stop().getMp3();
+      setIsRecording(false);
+
+      // Convert blob to ArrayBuffer
+      const arrayBuffer = await blob.arrayBuffer();
+
+      // POST to our /api/transcribe route
+      const response = await fetch('/.netlify/functions/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: arrayBuffer,
+      });
+
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        console.error('Transcription failed:', errorJson);
+        toast.error('Voice transcription failed. Try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      const { text } = await response.json();
+      setIsLoading(false);
+      if (text && text.trim()) {
+        setQuery(text.trim());
+        toast.success('Voice search transcribed successfully!');
+      } else {
+        toast.error('Could not transcribe speech. Try again.');
+      }
+    } catch (err: any) {
+      console.error('Error processing recording:', err);
+      toast.error('Recording failed. Please try again.');
+      setIsLoading(false);
+      setIsRecording(false);
     }
-    setIsRecording(false);
   };
 
   const handleVoiceSearch = async () => {
     if (isRecording) {
-      stopRecording();
+      await stopRecording();
     } else {
       await startRecording();
     }
