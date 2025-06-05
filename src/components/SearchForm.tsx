@@ -304,16 +304,16 @@ const SearchForm = ({ mode }: SearchFormProps) => {
 
                 {/* Condition Filter */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block text-center sm:text-left">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block text-center">
                     Item Condition
                   </label>
-                  <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-2">
+                  <div className="flex flex-wrap justify-center gap-4">
                     {[
                       { id: 1000, label: 'New' },
                       { id: 3000, label: 'Used' },
                       { id: 2000, label: 'Refurbished' }
                     ].map(condition => (
-                      <div key={condition.id} className="flex items-start justify-center sm:justify-start">
+                      <div key={condition.id} className="flex items-center">
                         <Checkbox
                           checked={conditionIds.includes(condition.id)}
                           onChange={() => handleConditionChange(condition.id)}
@@ -327,11 +327,11 @@ const SearchForm = ({ mode }: SearchFormProps) => {
                 
                 {/* Shipping and Purchase Options */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block text-center sm:text-left">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block text-center">
                     Shipping & Purchase Options
                   </label>
-                  <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
-                    <div className="flex items-start justify-center sm:justify-start">
+                  <div className="flex flex-wrap justify-center gap-4">
+                    <div className="flex items-center">
                       <Checkbox
                         checked={freeShipping}
                         onChange={() => setFreeShipping(!freeShipping)}
@@ -339,7 +339,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
                         disabled={isLoading}
                       />
                     </div>
-                    <div className="flex items-start justify-center sm:justify-start">
+                    <div className="flex items-center">
                       <Checkbox
                         checked={buyItNowOnly}
                         onChange={() => setBuyItNowOnly(!buyItNowOnly)}
