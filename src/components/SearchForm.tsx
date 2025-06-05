@@ -15,9 +15,10 @@ interface SearchFormProps {
   mode: SearchMode;
 }
 
-const recorder = new Recorder({
-  wasmURL: '/vmsg.wasm', // We'll need to copy this file to the public directory
-  shimURL: '/vmsg.js',   // And this one too
+// Create recorder instance but don't initialize it yet
+const createRecorder = () => new Recorder({
+  wasmURL: '/vmsg.wasm',
+  shimURL: '/vmsg.js',
 });
 
 const SearchForm = ({ mode }: SearchFormProps) => {
@@ -25,7 +26,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [isRecorderReady, setIsRecorderReady] = useState(false);
+  const [recorder, setRecorder] = useState<Recorder | null>(null);
   
   // Filter states
   const [category, setCategory] = useState('all');
@@ -35,16 +36,6 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   const [buyItNowOnly, setBuyItNowOnly] = useState(false);
   const [userLocation, setUserLocation] = useState<LocationData>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
-
-  useEffect(() => {
-    // Initialize recorder
-    recorder.init()
-      .then(() => setIsRecorderReady(true))
-      .catch(err => {
-        console.error('Failed to initialize recorder:', err);
-        toast.error('Could not initialize voice recording. Please check microphone permissions.');
-      });
-  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,19 +60,32 @@ const SearchForm = ({ mode }: SearchFormProps) => {
     navigate(`/results?mode=${mode}&q=${encodeURIComponent(query)}&filters=${filtersParam}`);
   };
 
+  // Initialize recorder only when needed
+  const initializeRecorder = async () => {
+    try {
+      const newRecorder = createRecorder();
+      await newRecorder.init();
+      setRecorder(newRecorder);
+      return newRecorder;
+    } catch (err) {
+      console.error('Failed to initialize recorder:', err);
+      haptic('error');
+      toast.error('Could not initialize voice recording. Please check microphone permissions.');
+      return null;
+    }
+  };
+
   // Start recording from mic
   const startRecording = async () => {
-    if (!isRecorderReady) {
-      haptic('error');
-      toast.error('Voice recorder is not ready. Please try again.');
-      return;
-    }
-
     try {
+      // Initialize recorder if not already initialized
+      const rec = recorder || await initializeRecorder();
+      if (!rec) return;
+
       setIsRecording(true);
-      await recorder.initAudio();
-      await recorder.initWorker();
-      recorder.startRecording();
+      await rec.initAudio();
+      await rec.initWorker();
+      rec.startRecording();
       haptic('medium');
       toast.success('Recording started. Click the mic again to stop and transcribe.');
     } catch (err: any) {
@@ -94,6 +98,8 @@ const SearchForm = ({ mode }: SearchFormProps) => {
 
   // Stop recording, get blob, send to ElevenLabs
   const stopRecording = async () => {
+    if (!recorder) return;
+
     try {
       setIsLoading(true);
       haptic('light');
