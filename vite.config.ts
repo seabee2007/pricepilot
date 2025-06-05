@@ -28,7 +28,7 @@ export default defineConfig({
       },
     },
   },
-  assetsInclude: ['**/*.wasm'],
+  assetsInclude: ['**/*.wasm', '**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg'],
   server: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
