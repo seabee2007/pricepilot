@@ -41,19 +41,34 @@ const Layout = ({ children }: LayoutProps) => {
         setUser(currentUser);
         
         if (currentUser) {
-          const userProfile = await getProfile();
-          setProfile(userProfile);
-          
-          // Fetch subscription data
           try {
-            const userSubscription = await getUserSubscription();
-            setSubscription(userSubscription);
+            const userProfile = await getProfile();
+            setProfile(userProfile);
+            
+            // Fetch subscription data
+            try {
+              const userSubscription = await getUserSubscription();
+              setSubscription(userSubscription);
+            } catch (error) {
+              console.error('Error fetching subscription:', error);
+              // Don't fail the whole auth flow for subscription errors
+            }
           } catch (error) {
-            console.error('Error fetching subscription:', error);
+            console.error('Error fetching profile:', error);
+            // If profile fetch fails, still keep the user logged in
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error checking user:', error);
+        // If it's an auth error, clear the state
+        if (error.message?.includes('Auth session missing') || 
+            error.message?.includes('Invalid Refresh Token')) {
+          setUser(null);
+          setProfile(null);
+          setSubscription(null);
+          // Optionally redirect to sign in
+          // navigate('/signin');
+        }
       } finally {
         setLoading(false);
       }

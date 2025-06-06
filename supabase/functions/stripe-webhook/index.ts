@@ -3,15 +3,15 @@ import Stripe from 'npm:stripe@17.7.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 
 // Try both possible environment variable names for Stripe
-const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY') || Deno.env.get('STRIPE_API_KEY');
+const stripeSecret = Deno.env.get('STRIPE_API_KEY');
 const stripeWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
 if (!stripeSecret) {
-  throw new Error('Missing Stripe API key. Please set STRIPE_SECRET_KEY or STRIPE_API_KEY environment variable.');
+  throw new Error('Missing Stripe API key. Please set STRIPE_API_KEY environment variable.');
 }
 
 if (!stripeWebhookSecret) {
-  console.warn('STRIPE_WEBHOOK_SECRET not set. Webhook signature verification will be skipped in development.');
+  throw new Error('Missing Stripe webhook secret. Please set STRIPE_WEBHOOK_SECRET environment variable.');
 }
 
 const stripe = new Stripe(stripeSecret, {
@@ -21,7 +21,10 @@ const stripe = new Stripe(stripeSecret, {
   },
 });
 
-const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+);
 
 Deno.serve(async (req) => {
   try {
