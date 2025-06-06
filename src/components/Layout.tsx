@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Moon, Sun, Menu, X, Heart, User, LogOut } from 'lucide-react';
+import { Moon, Sun, Menu, X, Heart, User, LogOut, Crown } from 'lucide-react';
 import Button from './ui/Button';
-import { getCurrentUser, signOut, Profile, getProfile } from '../lib/supabase';
+import { getCurrentUser, signOut, Profile, getProfile, getUserSubscription } from '../lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
+import { SubscriptionData } from '../lib/stripe';
+import { getProductByPriceId } from '../stripe-config';
 import toast from 'react-hot-toast';
 import logo from '../assets/images/artwork.png';
 
@@ -17,6 +19,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,6 +43,14 @@ const Layout = ({ children }: LayoutProps) => {
         if (currentUser) {
           const userProfile = await getProfile();
           setProfile(userProfile);
+          
+          // Fetch subscription data
+          try {
+            const userSubscription = await getUserSubscription();
+            setSubscription(userSubscription);
+          } catch (error) {
+            console.error('Error fetching subscription:', error);
+          }
         }
       } catch (error) {
         console.error('Error checking user:', error);
@@ -71,12 +82,35 @@ const Layout = ({ children }: LayoutProps) => {
       await signOut();
       setUser(null);
       setProfile(null);
+      setSubscription(null);
       toast.success('Signed out successfully');
       navigate('/');
     } catch (error: any) {
       console.error('Sign out error:', error);
       toast.error('Error signing out');
     }
+  };
+
+  const getSubscriptionDisplay = () => {
+    if (!subscription || !subscription.price_id) {
+      return null;
+    }
+
+    const product = getProductByPriceId(subscription.price_id);
+    if (!product) {
+      return null;
+    }
+
+    const isActive = subscription.subscription_status === 'active';
+    
+    return (
+      <div className="flex items-center space-x-2">
+        <Crown className={`h-4 w-4 ${isActive ? 'text-yellow-500' : 'text-gray-400'}`} />
+        <span className={`text-sm ${isActive ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-500'}`}>
+          {product.name} {isActive ? '(Active)' : '(Inactive)'}
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -99,6 +133,10 @@ const Layout = ({ children }: LayoutProps) => {
                     Saved Searches
                   </Link>
                 )}
+                <Link to="/pricing" className="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white dark:hover:border-gray-600">
+                  <Crown className="h-4 w-4 mr-1" />
+                  Pricing
+                </Link>
               </nav>
             </div>
             
@@ -116,11 +154,14 @@ const Layout = ({ children }: LayoutProps) => {
                 </div>
               ) : user ? (
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2">
-                    <User className="h-5 w-5 text-gray-400" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      {profile?.full_name || user.email}
-                    </span>
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-center space-x-2">
+                      <User className="h-5 w-5 text-gray-400" />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        {profile?.full_name || user.email}
+                      </span>
+                    </div>
+                    {getSubscriptionDisplay()}
                   </div>
                   <Button
                     variant="ghost"
@@ -182,6 +223,16 @@ const Layout = ({ children }: LayoutProps) => {
                   </div>
                 </Link>
               )}
+              <Link
+                to="/pricing"
+                className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-base font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-50 hover:border-gray-300 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 dark:hover:border-gray-600"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <div className="flex items-center">
+                  <Crown className="h-4 w-4 mr-1" />
+                  Pricing
+                </div>
+              </Link>
               <div className="flex items-center justify-between pl-3 pr-4 py-2">
                 <span className="text-gray-600 dark:text-gray-300">Theme</span>
                 <button
@@ -205,6 +256,7 @@ const Layout = ({ children }: LayoutProps) => {
                     <User className="h-4 w-4" />
                     <span className="text-sm">{profile?.full_name || user.email}</span>
                   </div>
+                  {getSubscriptionDisplay()}
                   <button
                     onClick={handleSignOut}
                     className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"

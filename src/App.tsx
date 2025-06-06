@@ -4,6 +4,8 @@ import Layout from './components/Layout';
 import HomePage from './pages/HomePage';
 import ResultsPage from './pages/ResultsPage';
 import SavedSearchesPage from './pages/SavedSearchesPage';
+import PricingPage from './pages/PricingPage';
+import SuccessPage from './pages/SuccessPage';
 import SignUpPage from './pages/SignUpPage';
 import SignInPage from './pages/SignInPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -27,6 +29,8 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/results" element={<ResultsPage />} />
               <Route path="/saved-searches" element={<SavedSearchesPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/success" element={<SuccessPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </Layout>

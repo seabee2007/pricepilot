@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { SavedSearch, PriceHistory, SearchFilters } from '../types';
+import { SubscriptionData } from './stripe';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -53,6 +54,7 @@ export async function signUp({ email, password, fullName }: SignUpData) {
       data: {
         full_name: fullName,
       },
+      emailRedirectTo: undefined, // Disable email confirmation
     },
   });
 
@@ -245,4 +247,33 @@ export async function updatePassword({ password }: UpdatePasswordData) {
   }
 
   return data;
+}
+
+// Stripe Integration Functions
+export async function getUserSubscription(): Promise<SubscriptionData | null> {
+  const { data, error } = await supabase
+    .from('stripe_user_subscriptions')
+    .select('*')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching subscription:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getUserOrders() {
+  const { data, error } = await supabase
+    .from('stripe_user_orders')
+    .select('*')
+    .order('order_date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching orders:', error);
+    throw error;
+  }
+
+  return data || [];
 }
