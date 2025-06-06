@@ -73,6 +73,36 @@ Deno.serve(async (req) => {
 });
 
 async function handleEvent(event: Stripe.Event) {
+  console.info(`Processing Stripe webhook event: ${event.type}`);
+  
+  // Handle subscription lifecycle events directly
+  if (event.type.startsWith('customer.subscription.')) {
+    const subscription = event.data.object as Stripe.Subscription;
+    const customerId = subscription.customer as string;
+    
+    switch (event.type) {
+      case 'customer.subscription.created':
+        console.info(`Subscription created for customer: ${customerId}`);
+        await handleSubscriptionCreated(subscription);
+        break;
+        
+      case 'customer.subscription.updated':
+        console.info(`Subscription updated for customer: ${customerId}`);
+        await handleSubscriptionUpdated(subscription);
+        break;
+        
+      case 'customer.subscription.deleted':
+        console.info(`Subscription deleted for customer: ${customerId}`);
+        await handleSubscriptionDeleted(subscription);
+        break;
+        
+      default:
+        console.info(`Unhandled subscription event: ${event.type}`);
+    }
+    return;
+  }
+  
+  // Handle other events
   const stripeData = event?.data?.object ?? {};
 
   if (!stripeData) {
@@ -140,6 +170,99 @@ async function handleEvent(event: Stripe.Event) {
         console.error('Error processing one-time payment:', error);
       }
     }
+  }
+}
+
+// Handle subscription created event
+async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
+  const customerId = subscription.customer as string;
+  
+  try {
+    const { error } = await supabase.from('stripe_subscriptions').upsert(
+      {
+        customer_id: customerId,
+        subscription_id: subscription.id,
+        price_id: subscription.items.data[0].price.id,
+        current_period_start: subscription.current_period_start,
+        current_period_end: subscription.current_period_end,
+        cancel_at_period_end: subscription.cancel_at_period_end,
+        status: subscription.status,
+      },
+      {
+        onConflict: 'customer_id',
+      },
+    );
+
+    if (error) {
+      console.error('Error creating subscription:', error);
+      throw new Error('Failed to create subscription in database');
+    }
+    
+    console.info(`Successfully created subscription for customer: ${customerId}`);
+  } catch (error) {
+    console.error(`Failed to handle subscription created for customer ${customerId}:`, error);
+    throw error;
+  }
+}
+
+// Handle subscription updated event
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  const customerId = subscription.customer as string;
+  
+  try {
+    const { error } = await supabase.from('stripe_subscriptions').upsert(
+      {
+        customer_id: customerId,
+        subscription_id: subscription.id,
+        price_id: subscription.items.data[0].price.id,
+        current_period_start: subscription.current_period_start,
+        current_period_end: subscription.current_period_end,
+        cancel_at_period_end: subscription.cancel_at_period_end,
+        status: subscription.status,
+      },
+      {
+        onConflict: 'customer_id',
+      },
+    );
+
+    if (error) {
+      console.error('Error updating subscription:', error);
+      throw new Error('Failed to update subscription in database');
+    }
+    
+    console.info(`Successfully updated subscription for customer: ${customerId}`);
+  } catch (error) {
+    console.error(`Failed to handle subscription updated for customer ${customerId}:`, error);
+    throw error;
+  }
+}
+
+// Handle subscription deleted event
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+  const customerId = subscription.customer as string;
+  
+  try {
+    const { error } = await supabase.from('stripe_subscriptions').upsert(
+      {
+        customer_id: customerId,
+        subscription_id: subscription.id,
+        status: 'canceled',
+        cancel_at_period_end: true,
+      },
+      {
+        onConflict: 'customer_id',
+      },
+    );
+
+    if (error) {
+      console.error('Error deleting subscription:', error);
+      throw new Error('Failed to delete subscription in database');
+    }
+    
+    console.info(`Successfully marked subscription as deleted for customer: ${customerId}`);
+  } catch (error) {
+    console.error(`Failed to handle subscription deleted for customer ${customerId}:`, error);
+    throw error;
   }
 }
 
