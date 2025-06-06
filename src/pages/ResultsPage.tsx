@@ -6,7 +6,7 @@ import SaveThresholdModal from '../components/SaveThresholdModal';
 import { ItemSummary, SearchFilters, SearchMode, PriceHistory } from '../types';
 import { searchLiveItems, searchCompletedItems, calculateAveragePrice } from '../lib/ebay';
 import { savePriceHistory, saveSearch, getPriceHistory } from '../lib/supabase';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertCircle } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
 
@@ -75,8 +75,16 @@ const ResultsPage = () => {
         }
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Failed to fetch data from eBay. Please try again.');
-        toast.error('Error fetching results. Please try again.');
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch data from eBay. Please try again.';
+        
+        // Check if it's an API credentials error
+        if (errorMessage.includes('eBay API credentials are missing') || errorMessage.includes('authentication failed')) {
+          setError(`${errorMessage} Please check the setup instructions in EBAY_API_SETUP.md for configuring your eBay API credentials.`);
+        } else {
+          setError(errorMessage);
+        }
+        
+        toast.error('Error fetching results. Please check your API configuration.');
       } finally {
         setLoading(false);
       }
@@ -123,7 +131,28 @@ const ResultsPage = () => {
       
       {error ? (
         <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded mb-6">
-          <p className="text-red-700 dark:text-red-400">{error}</p>
+          <div className="flex items-start">
+            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
+            <div>
+              <h3 className="text-red-800 dark:text-red-400 font-medium mb-2">API Configuration Error</h3>
+              <p className="text-red-700 dark:text-red-400 text-sm leading-relaxed">{error}</p>
+              {error.includes('credentials') && (
+                <div className="mt-3 text-sm text-red-600 dark:text-red-400">
+                  <p className="font-medium">To fix this issue:</p>
+                  <ol className="list-decimal list-inside mt-1 space-y-1">
+                    <li>Create a <code className="bg-red-100 dark:bg-red-900/30 px-1 rounded">.env</code> file in your project root</li>
+                    <li>Add your eBay API credentials:
+                      <pre className="bg-red-100 dark:bg-red-900/30 p-2 rounded mt-1 text-xs">
+{`VITE_EBAY_CLIENT_ID=your_ebay_client_id_here
+VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
+                      </pre>
+                    </li>
+                    <li>Restart your development server</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         <>

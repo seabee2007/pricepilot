@@ -16,7 +16,7 @@ async function getOAuthToken(): Promise<string> {
   const clientSecret = import.meta.env.VITE_EBAY_CLIENT_SECRET as string;
 
   if (!clientId || !clientSecret) {
-    throw new Error('Missing eBay API credentials');
+    throw new Error('eBay API credentials are missing. Please check your .env file and ensure VITE_EBAY_CLIENT_ID and VITE_EBAY_CLIENT_SECRET are set correctly.');
   }
 
   const credentials = btoa(`${clientId}:${clientSecret}`);
@@ -32,10 +32,15 @@ async function getOAuthToken(): Promise<string> {
     });
 
     if (!response.ok) {
-      throw new Error(`eBay OAuth error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`eBay OAuth authentication failed (${response.status}): ${errorText}. Please verify your eBay API credentials in the .env file.`);
     }
 
     const data = await response.json();
+    
+    if (!data.access_token) {
+      throw new Error('eBay OAuth response missing access token. Please check your API credentials.');
+    }
     
     // Cache the token with expiration
     tokenCache = {
@@ -46,6 +51,8 @@ async function getOAuthToken(): Promise<string> {
     return data.access_token;
   } catch (error) {
     console.error('Error fetching eBay OAuth token:', error);
+    // Clear any cached token on error
+    tokenCache = null;
     throw error;
   }
 }
@@ -116,7 +123,12 @@ export async function searchLiveItems(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
+      if (response.status === 401) {
+        // Clear cached token on authentication error
+        tokenCache = null;
+        throw new Error(`eBay API authentication failed. Please verify your API credentials are correct and active.`);
+      }
+      throw new Error(`eBay API error (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();
@@ -161,7 +173,12 @@ export async function searchCompletedItems(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
+      if (response.status === 401) {
+        // Clear cached token on authentication error
+        tokenCache = null;
+        throw new Error(`eBay API authentication failed. Please verify your API credentials are correct and active.`);
+      }
+      throw new Error(`eBay API error (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();
