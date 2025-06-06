@@ -1,53 +1,103 @@
 import { ItemSummary, SearchFilters } from '../types';
+import { supabase } from './supabase';
 
-// Cache for the OAuth token
-let tokenCache: {
-  access_token: string;
-  expires_at: number;
-} | null = null;
-
-async function getOAuthToken(): Promise<string> {
-  // If token exists and is still valid, return it
-  if (tokenCache && tokenCache.expires_at > Date.now()) {
-    return tokenCache.access_token;
-  }
-
-  const clientId = import.meta.env.VITE_EBAY_CLIENT_ID as string;
-  const clientSecret = import.meta.env.VITE_EBAY_CLIENT_SECRET as string;
-
-  if (!clientId || !clientSecret) {
-    throw new Error('Missing eBay API credentials');
-  }
-
-  const credentials = btoa(`${clientId}:${clientSecret}`);
-
+export async function searchLiveItems(
+  query: string, 
+  filters: SearchFilters = {},
+  pageSize: number = 50,
+  pageOffset: number = 0
+): Promise<ItemSummary[]> {
   try {
-    const response = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${credentials}`,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
       },
-      body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope',
+      body: JSON.stringify({
+        query,
+        filters,
+        pageSize,
+        pageOffset,
+        mode: 'live'
+      }),
     });
 
     if (!response.ok) {
-      throw new Error(`eBay OAuth error: ${response.status} ${response.statusText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to search eBay');
     }
 
     const data = await response.json();
-    
-    // Cache the token with expiration
-    tokenCache = {
-      access_token: data.access_token,
-      expires_at: Date.now() + (data.expires_in * 1000 * 0.9), // 90% of actual expiry time for safety
-    };
-
-    return data.access_token;
+    return data.items || [];
   } catch (error) {
-    console.error('Error fetching eBay OAuth token:', error);
+    console.error('Error searching live items:', error);
     throw error;
   }
+}
+
+export async function searchCompletedItems(
+  query: string, 
+  filters: SearchFilters = {},
+  pageSize: number = 50,
+  pageOffset: number = 0
+): Promise<ItemSummary[]> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        filters,
+        pageSize,
+        pageOffset,
+        mode: 'completed'
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to search eBay');
+    }
+
+    const data = await response.json();
+    return data.items || [];
+  } catch (error) {
+    console.error('Error searching completed items:', error);
+    throw error;
+  }
+}
+
+export function calculateAveragePrice(items: ItemSummary[]): number {
+  if (!items || items.length === 0) {
+    return 0;
+  }
+  
+  const validPrices = items
+    .filter(item => item.price && typeof item.price.value === 'number')
+    .map(item => item.price.value);
+  
+  if (validPrices.length === 0) {
+    return 0;
+  }
+  
+  const sum = validPrices.reduce((total, price) => total + price, 0);
+  return sum / validPrices.length;
 }
 
 function buildFilterString(filters: SearchFilters): string {
@@ -76,117 +126,6 @@ function buildFilterString(filters: SearchFilters): string {
   }
 
   return filterParts.join(',');
-}
-
-export async function searchLiveItems(
-  query: string, 
-  filters: SearchFilters = {},
-  pageSize: number = 50,
-  pageOffset: number = 0
-): Promise<ItemSummary[]> {
-  try {
-    const token = await getOAuthToken();
-    const filterString = buildFilterString(filters);
-    
-    const url = new URL('https://api.ebay.com/buy/browse/v1/item_summary/search');
-    url.searchParams.append('q', query);
-    url.searchParams.append('sort', 'price');
-    
-    if (filterString) {
-      url.searchParams.append('filter', filterString);
-    }
-    
-    if (filters.postalCode) {
-      url.searchParams.append('buyerPostalCode', filters.postalCode);
-    }
-    
-    url.searchParams.append('limit', pageSize.toString());
-    
-    if (pageOffset > 0) {
-      url.searchParams.append('offset', pageOffset.toString());
-    }
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.itemSummaries || [];
-  } catch (error) {
-    console.error('Error searching live items:', error);
-    throw error;
-  }
-}
-
-export async function searchCompletedItems(
-  query: string, 
-  filters: SearchFilters = {},
-  pageSize: number = 50,
-  pageOffset: number = 0
-): Promise<ItemSummary[]> {
-  try {
-    const token = await getOAuthToken();
-    const filterString = buildFilterString(filters);
-    
-    const url = new URL('https://api.ebay.com/buy/browse/v1/item_summary/completed');
-    url.searchParams.append('q', query);
-    url.searchParams.append('sort', 'price_desc');
-    
-    if (filterString) {
-      url.searchParams.append('filter', filterString);
-    }
-    
-    url.searchParams.append('limit', pageSize.toString());
-    
-    if (pageOffset > 0) {
-      url.searchParams.append('offset', pageOffset.toString());
-    }
-
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.itemSummaries || [];
-  } catch (error) {
-    console.error('Error searching completed items:', error);
-    throw error;
-  }
-}
-
-export function calculateAveragePrice(items: ItemSummary[]): number {
-  if (!items || items.length === 0) {
-    return 0;
-  }
-  
-  const validPrices = items
-    .filter(item => item.price && typeof item.price.value === 'number')
-    .map(item => item.price.value);
-  
-  if (validPrices.length === 0) {
-    return 0;
-  }
-  
-  const sum = validPrices.reduce((total, price) => total + price, 0);
-  return sum / validPrices.length;
 }
 
 /**
