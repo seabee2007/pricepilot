@@ -3,10 +3,16 @@ import Stripe from 'npm:stripe@17.7.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 
 const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY')!;
+// Try both possible environment variable names for Stripe
+const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY') || Deno.env.get('STRIPE_API_KEY');
+
+if (!stripeSecret) {
+  throw new Error('Missing Stripe API key. Please set STRIPE_SECRET_KEY or STRIPE_API_KEY environment variable.');
+}
+
 const stripe = new Stripe(stripeSecret, {
   appInfo: {
-    name: 'Bolt Integration',
+    name: 'PricePilot Stripe Integration',
     version: '1.0.0',
   },
 });

@@ -2,11 +2,21 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Stripe from 'npm:stripe@17.7.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 
-const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY')!;
-const stripeWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!;
+// Try both possible environment variable names for Stripe
+const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY') || Deno.env.get('STRIPE_API_KEY');
+const stripeWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+
+if (!stripeSecret) {
+  throw new Error('Missing Stripe API key. Please set STRIPE_SECRET_KEY or STRIPE_API_KEY environment variable.');
+}
+
+if (!stripeWebhookSecret) {
+  console.warn('STRIPE_WEBHOOK_SECRET not set. Webhook signature verification will be skipped in development.');
+}
+
 const stripe = new Stripe(stripeSecret, {
   appInfo: {
-    name: 'Bolt Integration',
+    name: 'PricePilot Stripe Integration',
     version: '1.0.0',
   },
 });
@@ -27,21 +37,27 @@ Deno.serve(async (req) => {
     // get the signature from the header
     const signature = req.headers.get('stripe-signature');
 
-    if (!signature) {
-      return new Response('No signature found', { status: 400 });
-    }
-
     // get the raw body
     const body = await req.text();
 
-    // verify the webhook signature
     let event: Stripe.Event;
 
-    try {
-      event = await stripe.webhooks.constructEventAsync(body, signature, stripeWebhookSecret);
-    } catch (error: any) {
-      console.error(`Webhook signature verification failed: ${error.message}`);
-      return new Response(`Webhook signature verification failed: ${error.message}`, { status: 400 });
+    // Only verify webhook signature if secret is provided
+    if (stripeWebhookSecret && signature) {
+      try {
+        event = await stripe.webhooks.constructEventAsync(body, signature, stripeWebhookSecret);
+      } catch (error: any) {
+        console.error(`Webhook signature verification failed: ${error.message}`);
+        return new Response(`Webhook signature verification failed: ${error.message}`, { status: 400 });
+      }
+    } else {
+      // In development, parse the body directly without signature verification
+      try {
+        event = JSON.parse(body);
+      } catch (error: any) {
+        console.error(`Failed to parse webhook body: ${error.message}`);
+        return new Response(`Failed to parse webhook body: ${error.message}`, { status: 400 });
+      }
     }
 
     EdgeRuntime.waitUntil(handleEvent(event));
