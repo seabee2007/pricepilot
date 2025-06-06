@@ -5,3 +5,4 @@ dist
 *.log
 # Local Netlify folder
 .netlify
+supabase/.temp/
