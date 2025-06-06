@@ -28,7 +28,12 @@ async function getOAuthToken(): Promise<string> {
   const credentials = btoa(`${clientId}:${clientSecret}`);
 
   try {
-    const response = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+    // Use sandbox OAuth endpoint for sandbox credentials
+    const oauthUrl = clientId.includes('SBX') 
+      ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
+      : 'https://api.ebay.com/identity/v1/oauth2/token';
+      
+    const response = await fetch(oauthUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -80,7 +85,152 @@ function buildFilterString(filters: any): string {
     filterParts.push('buyingOptions:{FIXED_PRICE}');
   }
 
+  // Enhanced filters based on eBay Browse API documentation
+  
+  // Price range filter
+  if (filters.priceRange) {
+    const { min, max, currency = 'USD' } = filters.priceRange;
+    if (min !== undefined || max !== undefined) {
+      let priceFilter = 'price:[';
+      if (min !== undefined && max !== undefined) {
+        priceFilter += `${min}..${max}`;
+      } else if (min !== undefined) {
+        priceFilter += `${min}`;
+      } else if (max !== undefined) {
+        priceFilter += `..${max}`;
+      }
+      priceFilter += ']';
+      filterParts.push(priceFilter);
+      filterParts.push(`priceCurrency:${currency}`);
+    }
+  }
+
+  // Returns accepted filter
+  if (filters.returnsAccepted) {
+    filterParts.push('returnsAccepted:true');
+  }
+
+  // Search in description filter
+  if (filters.searchInDescription) {
+    filterParts.push('searchInDescription:true');
+  }
+
+  // Seller account type filter
+  if (filters.sellerAccountType) {
+    filterParts.push(`sellerAccountTypes:{${filters.sellerAccountType}}`);
+  }
+
+  // Qualified programs filter
+  if (filters.qualifiedPrograms && filters.qualifiedPrograms.length > 0) {
+    filterParts.push(`qualifiedPrograms:{${filters.qualifiedPrograms.join('|')}}`);
+  }
+
+  // Exclude sellers filter
+  if (filters.excludeSellers && filters.excludeSellers.length > 0) {
+    filterParts.push(`excludeSellers:{${filters.excludeSellers.join('|')}}`);
+  }
+
+  // Charity only filter
+  if (filters.charityOnly) {
+    filterParts.push('charityOnly:true');
+  }
+
+  // Item end date filter
+  if (filters.itemEndDate) {
+    const { start, end } = filters.itemEndDate;
+    if (start || end) {
+      let dateFilter = 'itemEndDate:[';
+      if (start && end) {
+        dateFilter += `${start}..${end}`;
+      } else if (start) {
+        dateFilter += start;
+      } else if (end) {
+        dateFilter += `..${end}`;
+      }
+      dateFilter += ']';
+      filterParts.push(dateFilter);
+    }
+  }
+
+  // Item location country filter
+  if (filters.itemLocationCountry) {
+    filterParts.push(`itemLocationCountry:${filters.itemLocationCountry}`);
+  }
+
+  // Delivery country filter
+  if (filters.deliveryCountry) {
+    filterParts.push(`deliveryCountry:${filters.deliveryCountry}`);
+  }
+
+  // Delivery postal code filter
+  if (filters.deliveryPostalCode) {
+    filterParts.push(`deliveryPostalCode:${filters.deliveryPostalCode}`);
+  }
+
   return filterParts.join(',');
+}
+
+function buildCompatibilityFilter(compatibility: any): string {
+  if (!compatibility) return '';
+  
+  const parts: string[] = [];
+  
+  // Required fields for cars and trucks: Year, Make, Model, Trim, Engine
+  // Required fields for motorcycles: Year, Make, Model, Submodel
+  
+  if (compatibility.year) parts.push(`Year:${compatibility.year}`);
+  if (compatibility.make) parts.push(`Make:${compatibility.make}`);
+  if (compatibility.model) parts.push(`Model:${compatibility.model}`);
+  
+  if (compatibility.vehicleType === 'motorcycle') {
+    if (compatibility.submodel) parts.push(`Submodel:${compatibility.submodel}`);
+  } else {
+    // For cars and trucks
+    if (compatibility.trim) parts.push(`Trim:${compatibility.trim}`);
+    if (compatibility.engine) parts.push(`Engine:${compatibility.engine}`);
+  }
+  
+  return parts.join(';');
+}
+
+async function checkItemCompatibility(itemId: string, compatibility: any, token: string): Promise<any> {
+  const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
+  const baseApiUrl = isSandbox 
+    ? 'https://api.sandbox.ebay.com/buy/browse/v1/item'
+    : 'https://api.ebay.com/buy/browse/v1/item';
+  
+  const url = `${baseApiUrl}/${itemId}/check_compatibility`;
+  
+  const compatibilityProperties = [];
+  if (compatibility.year) compatibilityProperties.push({ name: 'Year', value: compatibility.year });
+  if (compatibility.make) compatibilityProperties.push({ name: 'Make', value: compatibility.make });
+  if (compatibility.model) compatibilityProperties.push({ name: 'Model', value: compatibility.model });
+  
+  if (compatibility.vehicleType === 'motorcycle') {
+    if (compatibility.submodel) compatibilityProperties.push({ name: 'Submodel', value: compatibility.submodel });
+  } else {
+    if (compatibility.trim) compatibilityProperties.push({ name: 'Trim', value: compatibility.trim });
+    if (compatibility.engine) compatibilityProperties.push({ name: 'Engine', value: compatibility.engine });
+  }
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+    },
+    body: JSON.stringify({
+      compatibilityProperties
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`eBay Compatibility API error: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+
+  return await response.json();
 }
 
 Deno.serve(async (req) => {
@@ -114,6 +264,32 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+
+    // Handle compatibility check endpoint
+    if (pathname.includes('/check_compatibility')) {
+      const { itemId, compatibility } = await req.json();
+      
+      if (!itemId || !compatibility) {
+        throw new Error('Item ID and compatibility parameters are required');
+      }
+
+      const token = await getOAuthToken();
+      const compatibilityResult = await checkItemCompatibility(itemId, compatibility, token);
+
+      return new Response(
+        JSON.stringify(compatibilityResult),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
+    // Handle search requests
     const { query, filters = {}, pageSize = 50, pageOffset = 0, mode = 'live' } = await req.json();
 
     if (!query) {
@@ -122,31 +298,41 @@ Deno.serve(async (req) => {
 
     const token = await getOAuthToken();
     const filterString = buildFilterString(filters);
+    const compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
     
-    // Choose endpoint based on mode
+    // Choose endpoint based on mode and environment (sandbox vs production)
+    const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
+    const baseApiUrl = isSandbox 
+      ? 'https://api.sandbox.ebay.com/buy/browse/v1/item_summary'
+      : 'https://api.ebay.com/buy/browse/v1/item_summary';
+      
     const baseUrl = mode === 'completed' 
-      ? 'https://api.ebay.com/buy/browse/v1/item_summary/completed'
-      : 'https://api.ebay.com/buy/browse/v1/item_summary/search';
+      ? `${baseApiUrl}/completed`
+      : `${baseApiUrl}/search`;
     
-    const url = new URL(baseUrl);
-    url.searchParams.append('q', query);
-    url.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
+    const searchUrl = new URL(baseUrl);
+    searchUrl.searchParams.append('q', query);
+    searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
     if (filterString) {
-      url.searchParams.append('filter', filterString);
+      searchUrl.searchParams.append('filter', filterString);
+    }
+    
+    if (compatibilityFilter) {
+      searchUrl.searchParams.append('compatibility_filter', compatibilityFilter);
     }
     
     if (filters.postalCode) {
-      url.searchParams.append('buyerPostalCode', filters.postalCode);
+      searchUrl.searchParams.append('buyerPostalCode', filters.postalCode);
     }
     
-    url.searchParams.append('limit', pageSize.toString());
+    searchUrl.searchParams.append('limit', pageSize.toString());
     
     if (pageOffset > 0) {
-      url.searchParams.append('offset', pageOffset.toString());
+      searchUrl.searchParams.append('offset', pageOffset.toString());
     }
 
-    const response = await fetch(url.toString(), {
+    const response = await fetch(searchUrl.toString(), {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -161,9 +347,18 @@ Deno.serve(async (req) => {
 
     const data = await response.json();
 
+    // Process items to include compatibility information
+    const processedItems = (data.itemSummaries || []).map((item: any) => ({
+      ...item,
+      compatibility: item.compatibilityProperties ? {
+        compatibilityMatch: item.compatibilityMatch || 'UNKNOWN',
+        compatibilityProperties: item.compatibilityProperties || []
+      } : undefined
+    }));
+
     return new Response(
       JSON.stringify({ 
-        items: data.itemSummaries || [],
+        items: processedItems,
         total: data.total || 0,
         href: data.href || ''
       }),
