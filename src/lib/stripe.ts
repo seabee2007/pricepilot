@@ -1,4 +1,4 @@
-import { getCurrentUser } from './supabase';
+import { supabase } from './supabase';
 
 export interface CheckoutSessionRequest {
   price_id: string;
@@ -25,9 +25,10 @@ export interface SubscriptionData {
 }
 
 export async function createCheckoutSession(request: CheckoutSessionRequest): Promise<CheckoutSessionResponse> {
-  const user = await getCurrentUser();
+  // Get the current session to extract the access token
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   
-  if (!user) {
+  if (sessionError || !session) {
     throw new Error('User must be authenticated to create checkout session');
   }
 
@@ -35,7 +36,7 @@ export async function createCheckoutSession(request: CheckoutSessionRequest): Pr
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      'Authorization': `Bearer ${session.access_token}`,
     },
     body: JSON.stringify(request),
   });
