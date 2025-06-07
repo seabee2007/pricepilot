@@ -118,14 +118,24 @@ const VehicleSearchForm = ({
     if (make) {
       setLoadingModels(true);
       try {
-        // For vehicle searches, we use the cached fallback data only
-        // Taxonomy API is for parts compatibility, not vehicle discovery
+        // Try to get real-time models from eBay API first
+        console.log(`Attempting to load real-time models for ${make} from eBay...`);
+        const models = await getModelsForMake(make);
+        if (models.length > 0) {
+          setDynamicModels(models);
+          console.log(`Loaded ${models.length} real-time models for ${make} from eBay API`);
+        } else {
+          // Fallback to cached data if no models returned
+          const cachedModels = getModelsForMakeFromCache(vehicleAspects, make);
+          setDynamicModels(cachedModels);
+          console.log(`Using ${cachedModels.length} cached models for ${make} (no real-time data available)`);
+        }
+      } catch (error) {
+        console.error('Error loading models from eBay API:', error);
+        // Fallback to cached data on error
         const cachedModels = getModelsForMakeFromCache(vehicleAspects, make);
         setDynamicModels(cachedModels);
-        console.log(`Found ${cachedModels.length} models for ${make} from cached data`);
-      } catch (error) {
-        console.error('Error loading models:', error);
-        setDynamicModels([]);
+        console.log(`Using ${cachedModels.length} cached models for ${make} due to API error`);
       } finally {
         setLoadingModels(false);
       }
@@ -309,7 +319,7 @@ const VehicleSearchForm = ({
                 value={selectedMake}
                 onChange={(e) => handleMakeChange(e.target.value)}
                 disabled={loadingAspects || refreshingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 appearance-none"
               >
                 <option value="">Any Make</option>
                 {(vehicleAspects.makes || []).map((make) => (
@@ -332,7 +342,7 @@ const VehicleSearchForm = ({
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
                 disabled={!selectedMake || loadingModels}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed appearance-none"
               >
                 <option value="">
                   {!selectedMake 
@@ -379,7 +389,7 @@ const VehicleSearchForm = ({
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
                 disabled={loadingAspects || refreshingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 appearance-none"
               >
                 <option value="">Any Year</option>
                 {(vehicleAspects.years || []).map((year) => (

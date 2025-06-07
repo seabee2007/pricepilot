@@ -98,9 +98,10 @@ export async function getVehicleAspectsForParts(): Promise<VehicleAspects> {
 
 // Main function - now delegates to appropriate sub-function
 export async function getVehicleAspects(): Promise<VehicleAspects> {
-  // For now, always use vehicle search data since we're building a vehicle search form
-  // In the future, this could be parameterized based on search type
-  return getVehicleDataForSearch();
+  // Use real eBay data for parts compatibility which includes vehicle information
+  // This provides live, up-to-date vehicle data from eBay's database
+  console.log('Loading real-time vehicle data from eBay...');
+  return getVehicleAspectsForParts();
 }
 
 // Get compatibility properties for a category
