@@ -136,6 +136,20 @@ const SavedSearchesPage = () => {
                   <div>Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing'}</div>
                   <div>Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}</div>
                   <div>Function URL: {import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-price-alerts</div>
+                  <div className="mt-2 text-yellow-600 dark:text-yellow-400">
+                    Mode: {window.location.hostname.includes('webcontainer-api.io') || 
+                           window.location.hostname === 'localhost' || 
+                           window.location.hostname.includes('local-credentialless') ? 
+                           '🚧 Development (Mock Response)' : '🚀 Production (Real API)'}
+                  </div>
+                  {(window.location.hostname.includes('webcontainer-api.io') || 
+                    window.location.hostname === 'localhost' || 
+                    window.location.hostname.includes('local-credentialless')) && (
+                    <div className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                      Note: Development environment uses mock responses due to network restrictions. 
+                      Real price alerts work in production.
+                    </div>
+                  )}
                 </div>
               </details>
             </div>
