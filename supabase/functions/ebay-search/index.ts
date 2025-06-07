@@ -230,9 +230,9 @@ function enhanceQueryForCategory(query: string, category: string): string {
 function buildAspectFilter(vehicleAspects: any): string {
   if (!vehicleAspects) return '';
   
-  const aspectParts: string[] = [];
+  const aspectParts: string[] = ['categoryId:6001']; // Always include category
   
-  // Build aspect filters for vehicle search using the same format as cascading search
+  // Build aspect filters for vehicle search using the correct eBay format
   if (vehicleAspects.make) {
     aspectParts.push(`Make:{${vehicleAspects.make}}`);
   }
@@ -242,7 +242,7 @@ function buildAspectFilter(vehicleAspects: any): string {
   }
   
   if (vehicleAspects.year) {
-    aspectParts.push(`Model Year:{${vehicleAspects.year}}`); // Use "Model Year" to match eBay API
+    aspectParts.push(`Year:{${vehicleAspects.year}}`); // Use "Year" not "Model Year"
   } else if (vehicleAspects.yearFrom || vehicleAspects.yearTo) {
     // Handle year range
     if (vehicleAspects.yearFrom && vehicleAspects.yearTo) {
@@ -254,16 +254,16 @@ function buildAspectFilter(vehicleAspects: any): string {
         years.push(year.toString());
       }
       if (years.length > 0) {
-        aspectParts.push(`Model Year:{${years.join('|')}}`);
+        aspectParts.push(`Year:{${years.join('|')}}`);
       }
     } else if (vehicleAspects.yearFrom) {
-      aspectParts.push(`Model Year:{${vehicleAspects.yearFrom}}`);
+      aspectParts.push(`Year:{${vehicleAspects.yearFrom}}`);
     } else if (vehicleAspects.yearTo) {
-      aspectParts.push(`Model Year:{${vehicleAspects.yearTo}}`);
+      aspectParts.push(`Year:{${vehicleAspects.yearTo}}`);
     }
   }
   
-  return aspectParts.length > 0 ? `categoryId:6001,${aspectParts.join(',')}` : '';
+  return aspectParts.join(',');
 }
 
 function buildCompatibilityFilter(compatibility: any): string {
@@ -490,14 +490,65 @@ Deno.serve(async (req) => {
       },
     });
 
+    console.log('📡 eBay API Response Status:', response.status, response.statusText);
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('eBay API Error Response:', errorText);
+      console.error('❌ eBay API Error Response:', errorText);
+      console.error('❌ Failed URL:', searchUrl.toString());
       throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('eBay API Response:', JSON.stringify(data, null, 2));
+    console.log('✅ eBay API Response Summary:');
+    console.log('  - Total items found:', data.total || 0);
+    console.log('  - Items returned:', data.itemSummaries?.length || 0);
+    console.log('  - Warnings:', data.warnings?.length || 0);
+    
+    if (data.itemSummaries?.length > 0) {
+      console.log('  - First item title:', data.itemSummaries[0]?.title);
+      console.log('  - First item price:', data.itemSummaries[0]?.price?.value);
+    } else {
+      console.log('  - No items found - this could indicate:');
+      console.log('    1. No matching vehicles exist on eBay');
+      console.log('    2. Aspect filter is too restrictive');
+      console.log('    3. Category/aspect format issue');
+      
+      // If we have year filter and no results, try without year as debugging step
+      if (filters.vehicleAspects?.year && (filters.vehicleAspects.make || filters.vehicleAspects.model)) {
+        console.log('🔍 Debugging: Trying search without year filter...');
+        const noYearAspects = { ...filters.vehicleAspects };
+        delete noYearAspects.year;
+        const fallbackAspectFilter = buildAspectFilter({ vehicleAspects: noYearAspects });
+        
+        const fallbackUrl = new URL(baseUrl);
+        fallbackUrl.searchParams.append('q', [filters.vehicleAspects.make, filters.vehicleAspects.model].filter(Boolean).join(' '));
+        fallbackUrl.searchParams.append('category_ids', '6001');
+        if (fallbackAspectFilter) {
+          fallbackUrl.searchParams.append('aspect_filter', fallbackAspectFilter);
+        }
+        fallbackUrl.searchParams.append('limit', '5'); // Just a few for testing
+        
+        console.log('🔍 Fallback URL (no year):', fallbackUrl.toString());
+        
+        try {
+          const fallbackResponse = await fetch(fallbackUrl.toString(), {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+              'Accept': 'application/json',
+            },
+          });
+          
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            console.log('🔍 Fallback results (no year):', fallbackData.total || 0, 'items found');
+          }
+        } catch (fallbackError) {
+          console.log('🔍 Fallback search failed:', fallbackError);
+        }
+      }
+    }
 
     // Process items to include compatibility information and normalize data types
     const processedItems = (data.itemSummaries || []).map((item: any) => ({
