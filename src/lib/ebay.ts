@@ -1216,7 +1216,19 @@ export async function getVehicleAspects(
       console.log('✅ Browse API refinements received:', data);
       
       // Extract aspect refinements from the response
-      const refinements = data.refinement?.aspectDistributions || [];
+      let refinements = [];
+      
+      // Try different possible response structures
+      if (data.refinement?.aspectDistributions) {
+        refinements = data.refinement.aspectDistributions;
+      } else if (data.aspectDistributions) {
+        refinements = data.aspectDistributions;
+      } else if (data.refinements?.aspectDistributions) {
+        refinements = data.refinements.aspectDistributions;
+      } else {
+        console.log('🔍 Full response structure:', JSON.stringify(data, null, 2));
+        console.log('❌ No aspect refinements found in response');
+      }
       
       const makes: Array<{ name: string; count: number }> = [];
       const models: Array<{ name: string; count: number }> = [];
@@ -1224,29 +1236,73 @@ export async function getVehicleAspects(
       
       // Process refinements to extract makes, models, and years
       refinements.forEach((aspect: any) => {
-        if (aspect.localizedAspectName === 'Make') {
-          aspect.aspectValueDistributions?.forEach((value: any) => {
+        const aspectName = aspect.localizedAspectName || aspect.aspectName || aspect.name;
+        const aspectValues = aspect.aspectValueDistributions || aspect.values || [];
+        
+        if (aspectName === 'Make' || aspectName === 'make') {
+          aspectValues.forEach((value: any) => {
             makes.push({
-              name: value.localizedAspectValue,
-              count: value.matchCount || 0
+              name: value.localizedAspectValue || value.value || value.name,
+              count: value.matchCount || value.count || 0
             });
           });
-        } else if (aspect.localizedAspectName === 'Model') {
-          aspect.aspectValueDistributions?.forEach((value: any) => {
+        } else if (aspectName === 'Model' || aspectName === 'model') {
+          aspectValues.forEach((value: any) => {
             models.push({
-              name: value.localizedAspectValue,
-              count: value.matchCount || 0
+              name: value.localizedAspectValue || value.value || value.name,
+              count: value.matchCount || value.count || 0
             });
           });
-        } else if (aspect.localizedAspectName === 'Year') {
-          aspect.aspectValueDistributions?.forEach((value: any) => {
+        } else if (aspectName === 'Year' || aspectName === 'year') {
+          aspectValues.forEach((value: any) => {
             years.push({
-              name: value.localizedAspectValue,
-              count: value.matchCount || 0
+              name: value.localizedAspectValue || value.value || value.name,
+              count: value.matchCount || value.count || 0
             });
           });
         }
       });
+      
+      // If no refinements found, try a fallback approach with a broader search
+      if (makes.length === 0 && models.length === 0 && years.length === 0) {
+        console.log('🔄 No refinements found, trying fallback search without aspects...');
+        
+        // Try a broader search with just "car" in motors category
+        const fallbackResponse = await fetch(functionUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            query: 'car',
+            filters: { category: '6001' },
+            pageSize: 5,
+            pageOffset: 0,
+            mode: 'live',
+            fieldgroups: ['ASPECT_REFINEMENTS']
+          }),
+        });
+        
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          console.log('🔄 Fallback response:', fallbackData);
+          
+          // Try to extract refinements from fallback
+          if (fallbackData.refinement?.aspectDistributions) {
+            console.log('✅ Found refinements in fallback response');
+            // Process fallback refinements the same way
+            fallbackData.refinement.aspectDistributions.forEach((aspect: any) => {
+              const aspectName = aspect.localizedAspectName || aspect.aspectName;
+              if (aspectName === 'Make' && makes.length === 0) {
+                aspect.aspectValueDistributions?.forEach((value: any) => {
+                  makes.push({
+                    name: value.localizedAspectValue,
+                    count: value.matchCount || 0
+                  });
+                });
+              }
+            });
+          }
+        }
+      }
       
       // Sort by count (most popular first)
       makes.sort((a, b) => b.count - a.count);
