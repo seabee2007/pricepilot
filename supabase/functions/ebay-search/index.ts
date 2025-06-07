@@ -227,10 +227,26 @@ function enhanceQueryForCategory(query: string, category: string): string {
   return query;
 }
 
-function buildAspectFilter(vehicleAspects: any): string {
+function buildAspectFilter(vehicleAspects: any, conditionIds: number[] = []): string {
   if (!vehicleAspects) return '';
   
   const aspectParts: string[] = ['categoryId:6001']; // Always include category
+  
+  // Add condition distributions in Sample 6 format if specified
+  if (conditionIds && conditionIds.length > 0) {
+    const conditionNames = conditionIds.map(id => {
+      switch(id) {
+        case 1000: return 'NEW';
+        case 2000: return 'CERTIFIED_REFURBISHED';
+        case 3000: return 'USED';
+        case 4000: return 'VERY_GOOD';
+        case 5000: return 'GOOD';
+        case 6000: return 'ACCEPTABLE';
+        default: return 'USED';
+      }
+    });
+    aspectParts.push(`conditionDistributions:{${conditionNames.join('|')}}`);
+  }
   
   // Build aspect filters for vehicle search using the correct eBay format
   if (vehicleAspects.make) {
@@ -242,14 +258,13 @@ function buildAspectFilter(vehicleAspects: any): string {
   }
   
   if (vehicleAspects.year) {
-    aspectParts.push(`Year:{${vehicleAspects.year}}`); // Use "Year" not "Model Year"
+    aspectParts.push(`Year:{${vehicleAspects.year}}`);
   } else if (vehicleAspects.yearFrom || vehicleAspects.yearTo) {
-    // Handle year range
+    // Handle year range - create multiple year values
     if (vehicleAspects.yearFrom && vehicleAspects.yearTo) {
-      // Create range of years
       const fromYear = parseInt(vehicleAspects.yearFrom);
       const toYear = parseInt(vehicleAspects.yearTo);
-      const years = [];
+      const years: string[] = [];
       for (let year = fromYear; year <= toYear; year++) {
         years.push(year.toString());
       }
@@ -261,6 +276,23 @@ function buildAspectFilter(vehicleAspects: any): string {
     } else if (vehicleAspects.yearTo) {
       aspectParts.push(`Year:{${vehicleAspects.yearTo}}`);
     }
+  }
+  
+  // Additional vehicle aspects that could be useful
+  if (vehicleAspects.bodyStyle) {
+    aspectParts.push(`Body Style:{${vehicleAspects.bodyStyle}}`);
+  }
+  
+  if (vehicleAspects.driveType) {
+    aspectParts.push(`Drive Type:{${vehicleAspects.driveType}}`);
+  }
+  
+  if (vehicleAspects.fuelType) {
+    aspectParts.push(`Fuel Type:{${vehicleAspects.fuelType}}`);
+  }
+  
+  if (vehicleAspects.transmission) {
+    aspectParts.push(`Transmission:{${vehicleAspects.transmission}}`);
   }
   
   return aspectParts.join(',');
@@ -418,7 +450,8 @@ Deno.serve(async (req) => {
       mode = 'live',
       pageSize = 50,
       pageOffset = 0,
-      filters = {}
+      filters = {},
+      fieldgroups = []
     } = body;
 
     // Extract nested vehicle aspects from filters
@@ -542,7 +575,7 @@ Deno.serve(async (req) => {
       }
     }
     
-    const aspectFilter = buildAspectFilter(vehicleData);
+    const aspectFilter = buildAspectFilter(vehicleData, conditionIds);
     
     // Debug logging for vehicle search
     console.log('🔍 Vehicle search debug info:');
@@ -593,6 +626,12 @@ Deno.serve(async (req) => {
       searchUrl.searchParams.append('aspect_filter', encodedAspectFilter);
       console.log(`Applied aspect filter: ${aspectFilter}`);
       console.log(`URL encoded aspect filter: ${encodedAspectFilter}`);
+    }
+    
+    // Add fieldgroups for extended data (Sample 6 format)
+    if (fieldgroups && fieldgroups.length > 0) {
+      searchUrl.searchParams.append('fieldgroups', fieldgroups.join(','));
+      console.log(`Applied fieldgroups: ${fieldgroups.join(',')}`);
     }
     
     if (filters.postalCode) {
@@ -646,7 +685,7 @@ Deno.serve(async (req) => {
         console.log('🔍 Debugging: Trying search without year filter...');
         const noYearAspects = { ...filters.vehicleAspects };
         delete noYearAspects.year;
-        const fallbackAspectFilter = buildAspectFilter({ vehicleAspects: noYearAspects });
+        const fallbackAspectFilter = buildAspectFilter({ vehicleAspects: noYearAspects }, conditionIds);
         
         const fallbackUrl = new URL(baseUrl);
         fallbackUrl.searchParams.append('q', [filters.vehicleAspects.make, filters.vehicleAspects.model].filter(Boolean).join(' '));

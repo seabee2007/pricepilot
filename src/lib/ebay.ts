@@ -77,9 +77,10 @@ export async function searchLiveItems(
   query: string, 
   filters: SearchFilters = {},
   pageSize: number = 50,
-  pageOffset: number = 0
+  pageOffset: number = 0,
+  fieldgroups: string[] = []
 ): Promise<ItemSummary[]> {
-  console.log('🔍 searchLiveItems called with:', { query, filters, pageSize, pageOffset });
+  console.log('🔍 searchLiveItems called with:', { query, filters, pageSize, pageOffset, fieldgroups });
   
   // Check environment variables
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -93,7 +94,7 @@ export async function searchLiveItems(
     throw new Error('VITE_SUPABASE_URL environment variable is not set');
   }
   
-  const requestKey = createRequestKey('searchLiveItems', { query, filters, pageSize, pageOffset });
+  const requestKey = createRequestKey('searchLiveItems', { query, filters, pageSize, pageOffset, fieldgroups });
   
   return makeThrottledRequest(requestKey, async () => {
     try {
@@ -127,7 +128,8 @@ export async function searchLiveItems(
         filters: enhancedFilters,
         pageSize: Math.min(Math.max(pageSize, 1), 200),
         pageOffset: Math.max(pageOffset, 0),
-        mode: 'live'
+        mode: 'live',
+        fieldgroups
       });
 
       const response = await fetch(functionUrl, {
@@ -138,7 +140,8 @@ export async function searchLiveItems(
           filters: enhancedFilters,
           pageSize: Math.min(Math.max(pageSize, 1), 200),
           pageOffset: Math.max(pageOffset, 0),
-          mode: 'live'
+          mode: 'live',
+          fieldgroups
         }),
       });
 
@@ -1049,4 +1052,86 @@ export function getAutomotivePartsCategories(): { id: string; name: string; desc
     { id: '33588', name: 'Interior', description: 'Seats, dashboard, interior accessories' },
     { id: '33580', name: 'Exterior', description: 'Mirrors, trim, exterior accessories' }
   ];
+}
+
+/**
+ * Enhanced vehicle search with extended data (shortDescription, location details, etc.)
+ * Based on Sample 6 - uses fieldgroups=EXTENDED,MATCHING_ITEMS for richer data
+ */
+export async function searchVehiclesExtended(
+  query: string,
+  vehicleFilters: {
+    make?: string;
+    model?: string;
+    year?: string;
+    yearFrom?: string;
+    yearTo?: string;
+    bodyStyle?: string;
+    driveType?: string;
+    fuelType?: string;
+    transmission?: string;
+  },
+  additionalFilters: SearchFilters = {},
+  pageSize: number = 50,
+  pageOffset: number = 0
+): Promise<ItemSummary[]> {
+  console.log('🔍 Enhanced vehicle search with extended data:', { query, vehicleFilters });
+  
+  // Build comprehensive search filters
+  const filters: SearchFilters = {
+    category: 'motors',
+    vehicleAspects: vehicleFilters,
+    ...additionalFilters
+  };
+  
+  // Use fieldgroups for extended data (Sample 6 format)
+  const fieldgroups = ['EXTENDED', 'MATCHING_ITEMS'];
+  
+  return searchLiveItems(query, filters, pageSize, pageOffset, fieldgroups);
+}
+
+/**
+ * Get available vehicle aspect options for enhanced filtering
+ * Based on common eBay Motors aspects from Sample 6 insights
+ */
+export function getVehicleAspectOptions(): {
+  bodyStyles: string[];
+  driveTypes: string[];
+  fuelTypes: string[];
+  transmissions: string[];
+} {
+  return {
+    bodyStyles: [
+      'Sedan',
+      'Coupe', 
+      'Convertible',
+      'Hatchback',
+      'SUV',
+      'Truck',
+      'Van',
+      'Wagon',
+      'Pickup Truck',
+      'Crossover'
+    ],
+    driveTypes: [
+      'FWD',
+      'RWD', 
+      'AWD',
+      '4WD'
+    ],
+    fuelTypes: [
+      'Gasoline',
+      'Diesel',
+      'Hybrid',
+      'Electric',
+      'Flex Fuel',
+      'Natural Gas'
+    ],
+    transmissions: [
+      'Automatic',
+      'Manual',
+      'CVT',
+      'Semi-Automatic'
+    ]
+  };
 }
