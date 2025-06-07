@@ -68,30 +68,38 @@ async function getOAuthToken(): Promise<string> {
   }
 }
 
-async function getVehicleAspectsFromBrowseAPI(token: string): Promise<any> {
+async function getVehicleAspectsFromBrowseAPI(token: string, make?: string): Promise<any> {
   const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
   const baseApiUrl = isSandbox 
     ? 'https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search'
     : 'https://api.ebay.com/buy/browse/v1/item_summary/search';
   
-  console.log('Fetching real-time vehicle aspects from eBay Browse API...');
-  
   const url = new URL(baseApiUrl);
   
-  // Search for vehicles in Cars & Trucks category with fieldgroups for aspect refinements
+  // Search for vehicles in Cars & Trucks category
   url.searchParams.append('category_ids', '6001'); // Cars & Trucks category
-  url.searchParams.append('q', 'car truck vehicle automobile'); // General vehicle search
+  
+  if (make) {
+    // Search for specific make
+    url.searchParams.append('q', `${make} car truck vehicle automobile`);
+    // Use aspect filter to focus on specific make
+    url.searchParams.append('aspect_filter', `Make:${make}`);
+  } else {
+    // General vehicle search
+    url.searchParams.append('q', 'car truck vehicle automobile');
+  }
+  
   url.searchParams.append('fieldgroups', 'ASPECT_REFINEMENTS'); // Get aspect refinements
   url.searchParams.append('limit', '200'); // Get more items for better aspect coverage
   
-  // Add filters to ensure we get actual vehicles
+  // Add filters to ensure we get actual vehicles, not parts/accessories
   const filters = [
     'buyingOptions:{FIXED_PRICE|AUCTION}', // Both auction and fixed price
     'conditionIds:{1000|3000|2000}' // New, Used, Refurbished
   ];
   url.searchParams.append('filter', filters.join(','));
 
-  console.log('Browse API URL:', url.toString());
+  console.log(`Fetching vehicle aspects${make ? ` for ${make}` : ''} from:`, url.toString());
 
   const response = await fetch(url.toString(), {
     headers: {
@@ -108,33 +116,38 @@ async function getVehicleAspectsFromBrowseAPI(token: string): Promise<any> {
   }
 
   const data = await response.json();
-  console.log('Browse API response received, processing aspects...');
+  console.log(`Browse API response for ${make || 'general'} - Total items: ${data.total || 0}`);
   
   return data;
 }
 
-async function getDetailedVehicleAspects(token: string): Promise<any> {
-  console.log('Starting detailed vehicle aspects collection from Browse API...');
+async function getRealTimeVehicleAspects(token: string): Promise<any> {
+  console.log('Starting real-time vehicle aspects collection from eBay Browse API...');
   
   const allMakes: any[] = [];
   const allModels: any[] = [];
   const allYears: any[] = [];
   
   try {
-    // Get general vehicle aspects from Browse API
-    const browseData = await getVehicleAspectsFromBrowseAPI(token);
+    // Step 1: Get general vehicle aspects to find all makes
+    console.log('Step 1: Fetching general vehicle aspects...');
+    const generalData = await getVehicleAspectsFromBrowseAPI(token);
     
-    // Extract aspect refinements from the Browse API response
-    const aspectRefinements = browseData.refinement?.aspectDistributions || [];
+    // Check if we have refinement data
+    if (!generalData.refinement || !generalData.refinement.aspectDistributions) {
+      console.log('No aspect refinements found in general search, using fallback');
+      throw new Error('No aspect refinements available');
+    }
     
-    console.log(`Found ${aspectRefinements.length} aspect distributions`);
+    const aspectRefinements = generalData.refinement.aspectDistributions;
+    console.log(`Found ${aspectRefinements.length} aspect distributions in general search`);
     
-    // Process each aspect distribution
+    // Extract makes and years from general search
     aspectRefinements.forEach((aspect: any) => {
       const aspectName = aspect.localizedAspectName?.toLowerCase();
-      console.log(`Processing aspect: ${aspectName} with ${aspect.aspectValueDistributions?.length || 0} values`);
       
       if (aspectName === 'make' || aspectName === 'brand') {
+        console.log(`Processing ${aspectName} with ${aspect.aspectValueDistributions?.length || 0} values`);
         aspect.aspectValueDistributions?.forEach((value: any) => {
           const count = value.matchCount || 0;
           if (count > 0) {
@@ -145,19 +158,8 @@ async function getDetailedVehicleAspects(token: string): Promise<any> {
             });
           }
         });
-      } else if (aspectName === 'model') {
-        aspect.aspectValueDistributions?.forEach((value: any) => {
-          const count = value.matchCount || 0;
-          if (count > 0) {
-            allModels.push({
-              value: value.localizedAspectValue,
-              displayName: value.localizedAspectValue,
-              count: count,
-              make: 'generic' // We'll associate with specific makes in a follow-up call
-            });
-          }
-        });
       } else if (aspectName === 'year') {
+        console.log(`Processing ${aspectName} with ${aspect.aspectValueDistributions?.length || 0} values`);
         aspect.aspectValueDistributions?.forEach((value: any) => {
           const count = value.matchCount || 0;
           if (count > 0) {
@@ -171,51 +173,31 @@ async function getDetailedVehicleAspects(token: string): Promise<any> {
       }
     });
     
-    console.log(`Initial extraction: ${allMakes.length} makes, ${allModels.length} models, ${allYears.length} years`);
+    console.log(`Extracted from general search: ${allMakes.length} makes, ${allYears.length} years`);
     
-    // Get make-specific models for top makes
+    // Step 2: Get make-specific models for top makes
     const topMakes = allMakes
       .sort((a, b) => b.count - a.count)
-      .slice(0, 15) // Focus on top 15 makes for detailed model data
+      .slice(0, 10) // Focus on top 10 makes for detailed model data
       .map(make => make.value);
     
-    console.log('Getting detailed models for top makes:', topMakes);
+    console.log('Step 2: Getting detailed models for top makes:', topMakes);
     
     // For each top make, get specific models
     for (const make of topMakes) {
       try {
         console.log(`Fetching models for ${make}...`);
         
-        const makeUrl = new URL(baseApiUrl);
-        makeUrl.searchParams.append('category_ids', '6001');
-        makeUrl.searchParams.append('q', `${make} car truck vehicle`);
-        makeUrl.searchParams.append('fieldgroups', 'ASPECT_REFINEMENTS');
-        makeUrl.searchParams.append('limit', '100');
+        const makeData = await getVehicleAspectsFromBrowseAPI(token, make);
         
-        // Use aspect filter to focus on specific make
-        const makeFilters = [
-          'buyingOptions:{FIXED_PRICE|AUCTION}',
-          'conditionIds:{1000|3000|2000}',
-          `aspectFilter:Make:${make}`
-        ];
-        makeUrl.searchParams.append('filter', makeFilters.join(','));
-        
-        const makeResponse = await fetch(makeUrl.toString(), {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-          },
-        });
-        
-        if (makeResponse.ok) {
-          const makeData = await makeResponse.json();
-          const makeAspects = makeData.refinement?.aspectDistributions || [];
+        if (makeData.refinement && makeData.refinement.aspectDistributions) {
+          const makeAspects = makeData.refinement.aspectDistributions;
           
           makeAspects.forEach((aspect: any) => {
             const aspectName = aspect.localizedAspectName?.toLowerCase();
             
             if (aspectName === 'model') {
+              console.log(`Found ${aspect.aspectValueDistributions?.length || 0} models for ${make}`);
               aspect.aspectValueDistributions?.forEach((value: any) => {
                 const count = value.matchCount || 0;
                 if (count > 0) {
@@ -239,10 +221,12 @@ async function getDetailedVehicleAspects(token: string): Promise<any> {
               });
             }
           });
+        } else {
+          console.log(`No aspect refinements found for ${make}`);
         }
         
         // Small delay to avoid overwhelming the API
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
         
       } catch (error) {
         console.error(`Error fetching models for ${make}:`, error);
@@ -253,7 +237,7 @@ async function getDetailedVehicleAspects(token: string): Promise<any> {
     console.log(`Final collection: ${allMakes.length} makes, ${allModels.length} models, ${allYears.length} years`);
     
   } catch (error) {
-    console.error('Error in detailed vehicle aspects collection:', error);
+    console.error('Error in real-time vehicle aspects collection:', error);
     throw error;
   }
   
@@ -278,6 +262,17 @@ async function getDetailedVehicleAspects(token: string): Promise<any> {
   });
   
   console.log(`Final processed counts: ${uniqueMakes.length} makes, ${uniqueModels.length} models, ${uniqueYears.length} years`);
+  
+  // Log sample data for verification
+  if (uniqueMakes.length > 0) {
+    console.log('Sample makes:', uniqueMakes.slice(0, 5).map(m => `${m.displayName} (${m.count})`));
+  }
+  if (uniqueModels.length > 0) {
+    console.log('Sample models:', uniqueModels.slice(0, 5).map(m => `${m.displayName} - ${m.make} (${m.count})`));
+  }
+  if (uniqueYears.length > 0) {
+    console.log('Sample years:', uniqueYears.slice(0, 5).map(y => `${y.displayName} (${y.count})`));
+  }
   
   return {
     makes: uniqueMakes.slice(0, 50), // Top 50 makes
@@ -428,7 +423,7 @@ Deno.serve(async (req) => {
     // Try to get real-time vehicle aspects from eBay Browse API
     let vehicleAspects;
     try {
-      vehicleAspects = await getDetailedVehicleAspects(token);
+      vehicleAspects = await getRealTimeVehicleAspects(token);
       console.log('Successfully retrieved real-time vehicle aspects from eBay Browse API');
     } catch (error) {
       console.error('Error getting real-time aspects, using fallback:', error);

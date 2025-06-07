@@ -43,16 +43,23 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     const loadAspects = async () => {
       setLoadingAspects(true);
       try {
-        console.log('Loading vehicle aspects...');
+        console.log('Loading real-time vehicle aspects from eBay Browse API...');
         const aspects = await getVehicleAspects();
-        console.log('Vehicle aspects loaded:', {
+        console.log('Real-time vehicle aspects loaded:', {
           makes: aspects.makes.length,
           models: aspects.models.length,
           years: aspects.years.length
         });
-        setVehicleAspects(aspects);
         
-        // No success toast - removed the "loaded..." notification
+        // Log sample data to verify real counts
+        if (aspects.makes.length > 0) {
+          console.log('Sample makes with real counts:', aspects.makes.slice(0, 5));
+        }
+        if (aspects.models.length > 0) {
+          console.log('Sample models with make association:', aspects.models.slice(0, 5));
+        }
+        
+        setVehicleAspects(aspects);
       } catch (error) {
         console.error('Error loading vehicle aspects:', error);
         toast.error('Failed to load vehicle options. Using fallback data.');
@@ -68,10 +75,10 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
   const handleRefreshAspects = async () => {
     setRefreshingAspects(true);
     try {
-      console.log('Refreshing vehicle aspects...');
+      console.log('Refreshing real-time vehicle aspects...');
       const aspects = await refreshVehicleAspects();
       setVehicleAspects(aspects);
-      toast.success('Vehicle data refreshed successfully!');
+      toast.success('Vehicle data refreshed with latest eBay inventory!');
     } catch (error) {
       console.error('Error refreshing vehicle aspects:', error);
       toast.error('Failed to refresh vehicle data');
@@ -92,7 +99,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     const models = getModelsForMake(vehicleAspects, make);
     console.log(`Selected make: ${make}, Available models: ${models.length}`);
     if (models.length > 0) {
-      console.log('Sample models:', models.slice(0, 5).map(m => m.displayName));
+      console.log('Sample models for this make:', models.slice(0, 5).map(m => `${m.displayName} (${m.count})`));
     }
   };
 
@@ -196,7 +203,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
             onClick={handleRefreshAspects}
             disabled={refreshingAspects || loadingAspects}
             className={`flex items-center ${mode === 'buy' ? 'text-blue-200 hover:text-white' : 'text-green-200 hover:text-white'} transition-colors disabled:opacity-50`}
-            title="Refresh vehicle data"
+            title="Refresh vehicle data from eBay"
           >
             <RefreshCw className={`h-4 w-4 ${refreshingAspects ? 'animate-spin' : ''}`} />
           </button>
@@ -211,14 +218,14 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
               <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
                 {mode === 'buy' 
-                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Results are filtered to exclude toys, models, and parts.'
-                  : 'Find completed sales of similar vehicles to help price your car or truck for sale.'
+                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category using real-time inventory data.'
+                  : 'Find completed sales of similar vehicles using real-time market data to help price your car or truck.'
                 }
               </p>
             </div>
             {vehicleAspects.makes.length > 0 && (
               <div className={`text-xs ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
-                {vehicleAspects.makes.length} makes • {vehicleAspects.models.length} models • {vehicleAspects.years.length} years
+                Live Data: {vehicleAspects.makes.length} makes • {vehicleAspects.models.length} models • {vehicleAspects.years.length} years
               </div>
             )}
           </div>
@@ -229,7 +236,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
             <div className="flex items-center">
               <Loader2 className={`h-5 w-5 animate-spin ${mode === 'buy' ? 'text-blue-600' : 'text-green-600'} mr-2`} />
               <span className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'}`}>
-                {refreshingAspects ? 'Refreshing vehicle data from eBay...' : 'Loading vehicle options from eBay...'}
+                {refreshingAspects ? 'Refreshing real-time vehicle data from eBay Browse API...' : 'Loading real-time vehicle options from eBay Browse API...'}
               </span>
             </div>
           </div>
@@ -288,7 +295,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
             )}
             {selectedMake && availableModels.length > 0 && (
               <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                Showing {availableModels.length} models for {selectedMake}
+                Showing {availableModels.length} models for {selectedMake} with real inventory counts
               </p>
             )}
           </div>
