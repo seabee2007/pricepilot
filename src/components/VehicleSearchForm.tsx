@@ -264,23 +264,14 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     if (onSearch) {
       onSearch(query, filters);
     } else {
-      // Navigate to search results
+      // Navigate to search results using the format expected by ResultsPage
       const searchParams = new URLSearchParams({
         q: query,
-        category: 'motors',
-        ...(selectedMake && { make: selectedMake }),
-        ...(selectedModel && { model: selectedModel }),
-        ...(selectedYear && { year: selectedYear }),
-        ...(yearRange.from && { yearFrom: yearRange.from }),
-        ...(yearRange.to && { yearTo: yearRange.to }),
-        ...(condition.length > 0 && { condition: condition.join(',') }),
-        ...(freeShipping && { freeShipping: 'true' }),
-        ...(buyItNowOnly && { buyItNow: 'true' }),
-        ...(priceRange.min && { minPrice: priceRange.min }),
-        ...(priceRange.max && { maxPrice: priceRange.max })
+        mode: mode, // Add the mode parameter
+        filters: JSON.stringify(filters) // Send filters as JSON string like ResultsPage expects
       });
       
-      navigate(`/search?${searchParams.toString()}`);
+      navigate(`/results?${searchParams.toString()}`);
     }
     
     setIsLoading(false);
