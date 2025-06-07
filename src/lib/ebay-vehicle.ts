@@ -16,7 +16,7 @@ export interface VehicleAspects {
 // Cache for vehicle aspects to avoid repeated API calls
 let aspectsCache: VehicleAspects | null = null;
 let cacheTimestamp: number = 0;
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes (shorter for real-time data)
 
 export async function getVehicleAspects(): Promise<VehicleAspects> {
   // Return cached data if still valid
@@ -26,7 +26,7 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
   }
 
   try {
-    console.log('Fetching fresh vehicle aspects from API...');
+    console.log('Fetching fresh vehicle aspects from eBay Browse API...');
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.access_token) {
@@ -50,7 +50,7 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
     }
 
     const data = await response.json();
-    console.log('Received vehicle aspects:', {
+    console.log('Received real-time vehicle aspects:', {
       makes: data.makes?.length || 0,
       models: data.models?.length || 0,
       years: data.years?.length || 0
@@ -68,31 +68,27 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
       years: data.years.filter((year: VehicleAspect) => year.count > 0)
     };
     
-    console.log('Filtered vehicle aspects:', {
+    console.log('Filtered real-time vehicle aspects:', {
       makes: filteredData.makes.length,
       models: filteredData.models.length,
       years: filteredData.years.length
     });
     
-    // Log sample of models to verify make association
-    const sampleModels = filteredData.models.slice(0, 10);
-    console.log('Sample models with make association:', sampleModels);
-    
-    // Cache the results
+    // Cache the results with shorter duration for real-time data
     aspectsCache = filteredData;
     cacheTimestamp = Date.now();
     
     return filteredData;
   } catch (error) {
-    console.error('Error fetching vehicle aspects:', error);
+    console.error('Error fetching real-time vehicle aspects:', error);
     
     // Return fallback data if API fails
     console.log('Using fallback vehicle aspects due to API error');
     const fallbackData = getFallbackVehicleAspects();
     
-    // Cache fallback data for a shorter time (5 minutes)
+    // Cache fallback data for a shorter time (2 minutes)
     aspectsCache = fallbackData;
-    cacheTimestamp = Date.now() - (CACHE_DURATION - 5 * 60 * 1000);
+    cacheTimestamp = Date.now() - (CACHE_DURATION - 2 * 60 * 1000);
     
     return fallbackData;
   }
@@ -274,107 +270,7 @@ function getFallbackVehicleAspects(): VehicleAspects {
       { value: 'Juke', displayName: 'Juke', count: 90, make: 'Nissan' },
       { value: 'Quest', displayName: 'Quest', count: 80, make: 'Nissan' },
       { value: 'Xterra', displayName: 'Xterra', count: 70, make: 'Nissan' },
-      { value: '350Z', displayName: '350Z', count: 60, make: 'Nissan' },
-      
-      // BMW models - comprehensive list
-      { value: '3 Series', displayName: '3 Series', count: 580, make: 'BMW' },
-      { value: 'X3', displayName: 'X3', count: 450, make: 'BMW' },
-      { value: '5 Series', displayName: '5 Series', count: 420, make: 'BMW' },
-      { value: 'X5', displayName: 'X5', count: 380, make: 'BMW' },
-      { value: '7 Series', displayName: '7 Series', count: 280, make: 'BMW' },
-      { value: 'X1', displayName: 'X1', count: 250, make: 'BMW' },
-      { value: '4 Series', displayName: '4 Series', count: 220, make: 'BMW' },
-      { value: 'X7', displayName: 'X7', count: 180, make: 'BMW' },
-      { value: 'Z4', displayName: 'Z4', count: 150, make: 'BMW' },
-      { value: 'i3', displayName: 'i3', count: 120, make: 'BMW' },
-      { value: 'X6', displayName: 'X6', count: 100, make: 'BMW' },
-      { value: '1 Series', displayName: '1 Series', count: 90, make: 'BMW' },
-      { value: '6 Series', displayName: '6 Series', count: 80, make: 'BMW' },
-      { value: 'X2', displayName: 'X2', count: 70, make: 'BMW' },
-      { value: 'i8', displayName: 'i8', count: 50, make: 'BMW' },
-      
-      // Mercedes-Benz models - comprehensive list
-      { value: 'C-Class', displayName: 'C-Class', count: 520, make: 'Mercedes-Benz' },
-      { value: 'E-Class', displayName: 'E-Class', count: 420, make: 'Mercedes-Benz' },
-      { value: 'GLE', displayName: 'GLE', count: 380, make: 'Mercedes-Benz' },
-      { value: 'S-Class', displayName: 'S-Class', count: 320, make: 'Mercedes-Benz' },
-      { value: 'GLC', displayName: 'GLC', count: 280, make: 'Mercedes-Benz' },
-      { value: 'A-Class', displayName: 'A-Class', count: 220, make: 'Mercedes-Benz' },
-      { value: 'GLS', displayName: 'GLS', count: 180, make: 'Mercedes-Benz' },
-      { value: 'CLA', displayName: 'CLA', count: 150, make: 'Mercedes-Benz' },
-      { value: 'GLB', displayName: 'GLB', count: 120, make: 'Mercedes-Benz' },
-      { value: 'G-Class', displayName: 'G-Class', count: 100, make: 'Mercedes-Benz' },
-      { value: 'GLA', displayName: 'GLA', count: 90, make: 'Mercedes-Benz' },
-      { value: 'SL-Class', displayName: 'SL-Class', count: 80, make: 'Mercedes-Benz' },
-      { value: 'CLS', displayName: 'CLS', count: 70, make: 'Mercedes-Benz' },
-      { value: 'SLK-Class', displayName: 'SLK-Class', count: 60, make: 'Mercedes-Benz' },
-      
-      // Dodge models - comprehensive list
-      { value: 'Challenger', displayName: 'Challenger', count: 700, make: 'Dodge' },
-      { value: 'Charger', displayName: 'Charger', count: 480, make: 'Dodge' },
-      { value: 'Durango', displayName: 'Durango', count: 380, make: 'Dodge' },
-      { value: 'Journey', displayName: 'Journey', count: 280, make: 'Dodge' },
-      { value: 'Grand Caravan', displayName: 'Grand Caravan', count: 220, make: 'Dodge' },
-      { value: 'Dart', displayName: 'Dart', count: 180, make: 'Dodge' },
-      { value: 'Viper', displayName: 'Viper', count: 120, make: 'Dodge' },
-      { value: 'Avenger', displayName: 'Avenger', count: 100, make: 'Dodge' },
-      { value: 'Caliber', displayName: 'Caliber', count: 80, make: 'Dodge' },
-      { value: 'Nitro', displayName: 'Nitro', count: 60, make: 'Dodge' },
-      
-      // Jeep models - comprehensive list
-      { value: 'Wrangler', displayName: 'Wrangler', count: 550, make: 'Jeep' },
-      { value: 'Grand Cherokee', displayName: 'Grand Cherokee', count: 480, make: 'Jeep' },
-      { value: 'Cherokee', displayName: 'Cherokee', count: 380, make: 'Jeep' },
-      { value: 'Compass', displayName: 'Compass', count: 320, make: 'Jeep' },
-      { value: 'Renegade', displayName: 'Renegade', count: 280, make: 'Jeep' },
-      { value: 'Gladiator', displayName: 'Gladiator', count: 220, make: 'Jeep' },
-      { value: 'Patriot', displayName: 'Patriot', count: 180, make: 'Jeep' },
-      { value: 'Liberty', displayName: 'Liberty', count: 150, make: 'Jeep' },
-      { value: 'Commander', displayName: 'Commander', count: 100, make: 'Jeep' },
-      
-      // Ram models - comprehensive list
-      { value: 'Ram 1500', displayName: 'Ram 1500', count: 1000, make: 'Ram' },
-      { value: 'Ram 2500', displayName: 'Ram 2500', count: 350, make: 'Ram' },
-      { value: 'Ram 3500', displayName: 'Ram 3500', count: 280, make: 'Ram' },
-      { value: 'ProMaster', displayName: 'ProMaster', count: 150, make: 'Ram' },
-      { value: 'ProMaster City', displayName: 'ProMaster City', count: 80, make: 'Ram' },
-      
-      // Additional comprehensive models for other makes...
-      { value: 'Elantra', displayName: 'Elantra', count: 420, make: 'Hyundai' },
-      { value: 'Sonata', displayName: 'Sonata', count: 380, make: 'Hyundai' },
-      { value: 'Tucson', displayName: 'Tucson', count: 320, make: 'Hyundai' },
-      { value: 'Santa Fe', displayName: 'Santa Fe', count: 280, make: 'Hyundai' },
-      { value: 'Accent', displayName: 'Accent', count: 220, make: 'Hyundai' },
-      { value: 'Genesis', displayName: 'Genesis', count: 180, make: 'Hyundai' },
-      { value: 'Veloster', displayName: 'Veloster', count: 150, make: 'Hyundai' },
-      { value: 'Azera', displayName: 'Azera', count: 120, make: 'Hyundai' },
-      
-      { value: 'Optima', displayName: 'Optima', count: 380, make: 'Kia' },
-      { value: 'Sorento', displayName: 'Sorento', count: 320, make: 'Kia' },
-      { value: 'Forte', displayName: 'Forte', count: 280, make: 'Kia' },
-      { value: 'Sportage', displayName: 'Sportage', count: 250, make: 'Kia' },
-      { value: 'Soul', displayName: 'Soul', count: 220, make: 'Kia' },
-      { value: 'Rio', displayName: 'Rio', count: 180, make: 'Kia' },
-      { value: 'Sedona', displayName: 'Sedona', count: 150, make: 'Kia' },
-      { value: 'Stinger', displayName: 'Stinger', count: 120, make: 'Kia' },
-      
-      { value: 'Outback', displayName: 'Outback', count: 450, make: 'Subaru' },
-      { value: 'Forester', displayName: 'Forester', count: 380, make: 'Subaru' },
-      { value: 'Impreza', displayName: 'Impreza', count: 320, make: 'Subaru' },
-      { value: 'Legacy', displayName: 'Legacy', count: 280, make: 'Subaru' },
-      { value: 'Crosstrek', displayName: 'Crosstrek', count: 250, make: 'Subaru' },
-      { value: 'WRX', displayName: 'WRX', count: 200, make: 'Subaru' },
-      { value: 'Ascent', displayName: 'Ascent', count: 150, make: 'Subaru' },
-      { value: 'BRZ', displayName: 'BRZ', count: 120, make: 'Subaru' },
-      
-      { value: 'CX-5', displayName: 'CX-5', count: 380, make: 'Mazda' },
-      { value: 'Mazda3', displayName: 'Mazda3', count: 320, make: 'Mazda' },
-      { value: 'CX-9', displayName: 'CX-9', count: 280, make: 'Mazda' },
-      { value: 'Mazda6', displayName: 'Mazda6', count: 250, make: 'Mazda' },
-      { value: 'MX-5 Miata', displayName: 'MX-5 Miata', count: 180, make: 'Mazda' },
-      { value: 'CX-3', displayName: 'CX-3', count: 150, make: 'Mazda' },
-      { value: 'CX-30', displayName: 'CX-30', count: 120, make: 'Mazda' },
-      { value: 'RX-8', displayName: 'RX-8', count: 80, make: 'Mazda' }
+      { value: '350Z', displayName: '350Z', count: 60, make: 'Nissan' }
     ],
     years
   };
