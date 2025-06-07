@@ -29,7 +29,7 @@ function App() {
           <Route path="/*" element={
             <Layout>
               <Routes>
-                <Route path="/\" element={<HomePage />} />
+                <Route path="/" element={<HomePage />} />
                 <Route path="/results" element={<ResultsPage />} />
                 <Route path="/saved-searches" element={<SavedSearchesPage />} />
                 <Route path="/saved-items" element={<SavedItemsPage />} />
