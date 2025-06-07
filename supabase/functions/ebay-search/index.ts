@@ -330,7 +330,7 @@ async function checkItemCompatibility(itemId: string, compatibility: any, token:
   
   const url = `${baseApiUrl}/${itemId}/check_compatibility`;
   
-  const compatibilityProperties: { name: string; value: string }[] = [];
+  const compatibilityProperties = [];
   if (compatibility.year) compatibilityProperties.push({ name: 'Year', value: compatibility.year });
   if (compatibility.make) compatibilityProperties.push({ name: 'Make', value: compatibility.make });
   if (compatibility.model) compatibilityProperties.push({ name: 'Model', value: compatibility.model });
@@ -480,6 +480,16 @@ Deno.serve(async (req) => {
       filters: { category, conditionIds, freeShipping, buyItNowOnly }
     });
 
+    // 🔍 DETAILED DEBUGGING FOR VEHICLE DATA EXTRACTION
+    console.log('🔍 [DEBUG] Raw body structure:', JSON.stringify(body, null, 2));
+    console.log('🔍 [DEBUG] Top-level vehicleAspects:', vehicleData);
+    console.log('🔍 [DEBUG] filters.vehicleAspects:', filters.vehicleAspects);
+    console.log('🔍 [DEBUG] Final vehicleData:', vehicleData);
+    console.log('🔍 [DEBUG] Extracted make:', make);
+    console.log('🔍 [DEBUG] Extracted model:', model);
+    console.log('🔍 [DEBUG] Extracted year:', year);
+    console.log('🔍 [DEBUG] Category:', category);
+
     // Validate required fields
     if (!query || query.trim() === '') {
       return new Response(
@@ -558,7 +568,7 @@ Deno.serve(async (req) => {
     let compatibilityFilter = '';
     if (filters.compatibilityFilter) {
       if (typeof filters.compatibilityFilter === 'string') {
-        // Direct string format
+        // Direct string format (from searchVehicleCompatibleParts)
         compatibilityFilter = filters.compatibilityFilter;
       } else {
         // Object format (from existing compatibility search)
@@ -567,6 +577,14 @@ Deno.serve(async (req) => {
     }
     
     const aspectFilter = buildAspectFilter(vehicleData, conditionIds);
+    
+    // Debug logging for vehicle search
+    console.log('🔍 Vehicle search debug info:');
+    console.log('  - Original query:', query);
+    console.log('  - Vehicle aspects:', JSON.stringify(vehicleData, null, 2));
+    console.log('  - Generated aspect filter:', aspectFilter);
+    console.log('  - Other filters:', filterString);
+    console.log('  - Compatibility filter:', compatibilityFilter);
     
     // Choose endpoint based on mode and environment (sandbox vs production)
     const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
@@ -658,11 +676,44 @@ Deno.serve(async (req) => {
       console.log('  - First item title:', data.itemSummaries[0]?.title);
       console.log('  - First item price:', data.itemSummaries[0]?.price?.value);
     } else {
-      console.log('  - No items found for vehicle search criteria');
+      console.log('  - No items found - this could indicate:');
+      console.log('    1. No matching vehicles exist on eBay');
+      console.log('    2. Aspect filter is too restrictive');
+      console.log('    3. Category/aspect format issue');
       
-      // If we have vehicle filters, try a simpler search for debugging
-      if (vehicleData?.make || vehicleData?.model) {
-        console.log('🔍 Vehicle search returned no results - this could indicate restrictive filters');
+      // If we have year filter and no results, try without year as debugging step
+      if (filters.vehicleAspects?.year && (filters.vehicleAspects.make || filters.vehicleAspects.model)) {
+        console.log('🔍 Debugging: Trying search without year filter...');
+        const noYearAspects = { ...filters.vehicleAspects };
+        delete noYearAspects.year;
+        const fallbackAspectFilter = buildAspectFilter({ vehicleAspects: noYearAspects }, conditionIds);
+        
+        const fallbackUrl = new URL(baseUrl);
+        fallbackUrl.searchParams.append('q', [filters.vehicleAspects.make, filters.vehicleAspects.model].filter(Boolean).join(' '));
+        fallbackUrl.searchParams.append('category_ids', '6001');
+        if (fallbackAspectFilter) {
+          fallbackUrl.searchParams.append('aspect_filter', fallbackAspectFilter);
+        }
+        fallbackUrl.searchParams.append('limit', '5'); // Just a few for testing
+        
+        console.log('🔍 Fallback URL (no year):', fallbackUrl.toString());
+        
+        try {
+          const fallbackResponse = await fetch(fallbackUrl.toString(), {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+              'Accept': 'application/json',
+            },
+          });
+          
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            console.log('🔍 Fallback results (no year):', fallbackData.total || 0, 'items found');
+          }
+        } catch (fallbackError) {
+          console.log('🔍 Fallback search failed:', fallbackError);
+        }
       }
     }
 
