@@ -62,7 +62,17 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
         setVehicleAspects(aspects);
       } catch (error) {
         console.error('Error loading vehicle aspects:', error);
-        toast.error('Failed to load vehicle options. Using fallback data.');
+        
+        // Parse error message to show user-friendly info
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        if (errorMessage.includes('eBay internal system') || errorMessage.includes('Internal error')) {
+          toast.error('eBay\'s vehicle data is temporarily unavailable. Please try again in a few minutes.');
+        } else if (errorMessage.includes('Authentication')) {
+          toast.error('Authentication error. Please try refreshing the page.');
+        } else {
+          toast.error('Unable to load vehicle data from eBay. Please try again later.');
+        }
       } finally {
         setLoadingAspects(false);
       }
@@ -81,7 +91,15 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
       toast.success('Vehicle data refreshed with latest eBay inventory!');
     } catch (error) {
       console.error('Error refreshing vehicle aspects:', error);
-      toast.error('Failed to refresh vehicle data');
+      
+      // Parse error message to show user-friendly info  
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      if (errorMessage.includes('eBay internal system') || errorMessage.includes('Internal error')) {
+        toast.error('eBay\'s servers are temporarily unavailable. Please try again in a few minutes.');
+      } else {
+        toast.error('Failed to refresh vehicle data from eBay. Please try again later.');
+      }
     } finally {
       setRefreshingAspects(false);
     }
@@ -238,6 +256,30 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <span className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'}`}>
                 {refreshingAspects ? 'Refreshing real-time vehicle data from eBay Browse API...' : 'Loading real-time vehicle options from eBay Browse API...'}
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* No Data Available Notice */}
+        {!loadingAspects && !refreshingAspects && vehicleAspects.makes.length === 0 && (
+          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <RefreshCw className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
+                <div>
+                  <p className="text-yellow-800 dark:text-yellow-200 font-medium">Vehicle data unavailable</p>
+                  <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+                    eBay's vehicle data is currently unavailable. You can still search manually or try refreshing.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleRefreshAspects}
+                className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-md transition-colors"
+              >
+                Retry
+              </button>
             </div>
           </div>
         )}
