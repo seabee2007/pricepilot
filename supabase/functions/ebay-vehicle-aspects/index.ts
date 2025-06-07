@@ -68,6 +68,51 @@ async function getOAuthToken(): Promise<string> {
   }
 }
 
+async function testBasicEbayConnection(token: string): Promise<any> {
+  const clientId = Deno.env.get('EBAY_CLIENT_ID');
+  const isProduction = !clientId?.includes('SBX');
+  
+  const baseUrl = isProduction 
+    ? 'https://api.ebay.com/buy/browse/v1/item_summary/search'
+    : 'https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search';
+
+  console.log(`🧪 Testing basic eBay API connection on ${isProduction ? 'PRODUCTION' : 'SANDBOX'}`);
+
+  // Simple test with minimal parameters
+  const url = new URL(baseUrl);
+  url.searchParams.append('q', 'drone'); // Simple, non-vehicle search
+  url.searchParams.append('limit', '5'); // Very small limit
+
+  console.log('🌐 Test API Request URL:', url.toString());
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Basic Test API Error:', errorText);
+      throw new Error(`Basic test failed: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Basic API test successful!');
+    console.log('  - Total items found:', data.total);
+    console.log('  - Items returned:', data.itemSummaries?.length || 0);
+    
+    return data;
+  } catch (error) {
+    console.error('❌ Basic API test failed:', error);
+    throw error;
+  }
+}
+
 async function searchVehiclesWithAspects(token: string, query: string = 'car truck vehicle'): Promise<any> {
   const clientId = Deno.env.get('EBAY_CLIENT_ID');
   const isProduction = !clientId?.includes('SBX');
@@ -82,12 +127,11 @@ async function searchVehiclesWithAspects(token: string, query: string = 'car tru
   url.searchParams.append('category_ids', '6001'); // Cars & Trucks category
   url.searchParams.append('q', query);
   url.searchParams.append('fieldgroups', 'ASPECT_REFINEMENTS'); // This is KEY for getting aspect data
-  url.searchParams.append('limit', '200'); // Get enough items for good aspect coverage
+  url.searchParams.append('limit', '50'); // Reduced limit to avoid timeouts
   
-  // Add filters to ensure we get actual vehicles, not parts/toys
+  // Simplified filters - remove potentially problematic ones
   const filters = [
-    'buyingOptions:{FIXED_PRICE|AUCTION}',
-    'conditionIds:{1000|3000|2000}', // New, Used, Refurbished
+    'buyingOptions:{FIXED_PRICE}', // Only fixed price for now
     'itemLocationCountry:US' // US vehicles only
   ];
   url.searchParams.append('filter', filters.join(','));
@@ -336,6 +380,11 @@ async function buildRealVehicleInventoryData(token: string): Promise<any> {
   console.log('🚀 Building REAL vehicle inventory data from eBay Browse API...');
   
   try {
+    // Step 0: Test basic eBay API connection first
+    console.log('\n🧪 Step 0: Testing basic eBay API connection...');
+    await testBasicEbayConnection(token);
+    console.log('✅ Basic connection test passed!');
+    
     // Step 1: Get general vehicle aspects with broad search
     console.log('\n📋 Step 1: Getting general vehicle aspects...');
     const generalData = await searchVehiclesWithAspects(token, 'car truck vehicle automobile');
