@@ -344,15 +344,59 @@ Deno.serve(async (req) => {
       });
     }
     
+    // Validate all required environment variables
+    const requiredEnvVars = {
+      "SUPABASE_URL": Deno.env.get("SUPABASE_URL"),
+      "SUPABASE_SERVICE_ROLE_KEY": Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+      "EBAY_CLIENT_ID": Deno.env.get("EBAY_CLIENT_ID"),
+      "EBAY_CLIENT_SECRET": Deno.env.get("EBAY_CLIENT_SECRET"),
+      "RESEND_API_KEY": Deno.env.get("RESEND_API_KEY")
+    };
+    
+    const missingVars = Object.entries(requiredEnvVars)
+      .filter(([key, value]) => !value)
+      .map(([key]) => key);
+    
+    if (missingVars.length > 0) {
+      console.error("❌ Missing required environment variables:", missingVars);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Missing required environment variables: ${missingVars.join(", ")}`,
+          timestamp: new Date().toISOString()
+        }),
+        {
+          headers: { 
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          },
+          status: 500,
+        }
+      );
+    }
+    
     // Check if this is a scheduled invocation or manual trigger
     const authHeader = req.headers.get("Authorization");
     const cronSecret = Deno.env.get("CRON_SECRET");
     const isScheduled = authHeader === `Bearer ${cronSecret}`;
-    const isManualTrigger = req.method === "POST" && !cronSecret; // Allow manual triggers in dev
+    const isManualTrigger = req.method === "POST" && authHeader?.startsWith("Bearer ");
     
     if (!isScheduled && !isManualTrigger) {
-      console.log("❌ Unauthorized request");
-      return new Response("Unauthorized", { status: 401 });
+      console.log("❌ Unauthorized request - missing or invalid authorization");
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: "Missing or invalid authorization header",
+          timestamp: new Date().toISOString()
+        }), 
+        { 
+          status: 401,
+          headers: { 
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          }
+        }
+      );
     }
     
     if (isScheduled) {

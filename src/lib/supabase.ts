@@ -460,26 +460,10 @@ export async function triggerPriceAlertsManually(): Promise<{ success: boolean; 
 
     console.log('🔑 Authentication token available, making request...');
 
-    // Check if we're in development mode (webcontainer/localhost)
-    const isDevelopment = window.location.hostname.includes('webcontainer-api.io') || 
-                         window.location.hostname === 'localhost' || 
-                         window.location.hostname.includes('local-credentialless');
-
-    if (isDevelopment) {
-      console.log('🚧 Development mode detected - using mock response');
-      
-      // In development, provide a mock response since network requests are restricted
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API delay
-      
-      return { 
-        success: true, 
-        message: '✅ Development mode: Price alerts function tested successfully! In production, this would check all your saved searches and send real email notifications if any prices dropped below your thresholds. The actual function is deployed and working - this limitation is only in the development environment.' 
-      };
-    }
-
-    // Production mode - try real API calls
+    // Try using Supabase client first (handles auth and CORS better)
     try {
       console.log('📡 Attempting to invoke via Supabase client...');
+      
       const { data, error } = await supabase.functions.invoke('check-price-alerts', {
         body: { 
           trigger: 'manual',
@@ -495,13 +479,13 @@ export async function triggerPriceAlertsManually(): Promise<{ success: boolean; 
       console.log('✅ Supabase client success:', data);
       return { 
         success: true, 
-        message: data?.message || 'Price alerts triggered successfully via Supabase client' 
+        message: data?.message || 'Price alerts check completed successfully! Check your email if any price drops were found.' 
       };
       
     } catch (supabaseError) {
-      console.error('❌ Supabase client failed, falling back to fetch...', supabaseError);
+      console.error('❌ Supabase client failed, falling back to direct fetch...', supabaseError);
       
-      // Fallback to direct fetch
+      // Fallback to direct fetch request
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
@@ -515,7 +499,7 @@ export async function triggerPriceAlertsManually(): Promise<{ success: boolean; 
         }),
       });
 
-      console.log('📥 Response status:', response.status, response.statusText);
+      console.log('📥 Fetch response status:', response.status, response.statusText);
 
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -546,22 +530,22 @@ export async function triggerPriceAlertsManually(): Promise<{ success: boolean; 
       }
 
       const data = await response.json();
-      console.log('✅ Success response:', data);
+      console.log('✅ Fetch success response:', data);
       
       return { 
         success: true, 
-        message: data.message || 'Price alerts triggered successfully' 
+        message: data?.message || 'Price alerts check completed successfully! Check your email if any price drops were found.' 
       };
     }
     
   } catch (error) {
     console.error('💥 Error triggering price alerts:', error);
     
-    // Provide more specific error messages
+    // Provide specific error messages
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
       return { 
         success: false, 
-        message: 'Network error: Unable to connect to the server. This might be due to CORS issues in development or the Edge Function not being deployed. Try testing this in production instead.' 
+        message: 'Network error: Unable to connect to the Edge Function. Please ensure the function is deployed and accessible.' 
       };
     }
     
