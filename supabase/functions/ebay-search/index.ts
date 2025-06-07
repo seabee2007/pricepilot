@@ -205,24 +205,19 @@ function getCategoryId(category: string): string | null {
   return categoryMap[category] || null;
 }
 
-// Enhanced query processing for automotive searches with stronger exclusions
+// Enhanced query processing for automotive searches with lighter exclusions
 function enhanceQueryForCategory(query: string, category: string): string {
-  // For motors category, add strong exclusions to filter out toys, models, and parts
+  // For motors category, add minimal exclusions to filter out obvious toys/models
+  // But keep it light to avoid filtering out legitimate vehicle listings
   if (category === 'motors') {
-    const exclusions = [
-      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast',
-      '-matchbox', '-hotwheels', '-hot-wheels', '-miniature', '-scale',
-      '-parts', '-part', '-accessory', '-accessories', '-component',
-      '-keychain', '-poster', '-manual', '-book', '-shirt', '-decal', 
-      '-sticker', '-emblem', '-badge', '-collectible', '-memorabilia',
-      '-remote', '-control', '-rc', '-plastic', '-metal', '-replica',
-      '-figurine', '-action', '-figure'
+    const lightExclusions = [
+      '-toy', '-toys', '-diecast', '-die-cast', '-matchbox', '-hotwheels', 
+      '-hot-wheels', '-miniature', '-scale', '-keychain', '-poster'
     ].join(' ');
     
-    // Add positive terms to reinforce we want actual vehicles
-    const positiveTerms = 'automobile motor vehicle transportation';
-    
-    return `${query} ${positiveTerms} ${exclusions}`;
+    // NO positive terms - they filter out too many legitimate listings
+    // Just the original query with minimal exclusions
+    return `${query} ${lightExclusions}`;
   }
   
   return query;
@@ -571,16 +566,6 @@ Deno.serve(async (req) => {
     // 2. Log the output of buildVehicleFilter immediately
     console.log('🔍 [DEBUG] vehicleFilter string:', vehicleFilter);
     
-    // TEMPORARY DEBUG: Let's trace exactly what's happening
-    console.log('🔍 [URGENT DEBUG] Vehicle filter generation:');
-    console.log('  - Input vehicleData:', JSON.stringify(vehicleData, null, 2));
-    console.log('  - vehicleData.make:', vehicleData?.make);
-    console.log('  - vehicleData.model:', vehicleData?.model);
-    console.log('  - vehicleData.year:', vehicleData?.year);
-    console.log('  - Generated vehicleFilter:', `"${vehicleFilter}"`);
-    console.log('  - vehicleFilter length:', vehicleFilter?.length);
-    console.log('  - vehicleFilter empty?', !vehicleFilter);
-    
     // Debug logging for vehicle search
     console.log('🔍 Vehicle search debug info:');
     console.log('  - Original query:', query);
@@ -622,15 +607,10 @@ Deno.serve(async (req) => {
     }
 
     // 2) Vehicle aspects (Make/Model/Year) go in "aspect_filter" parameter
-    // 3. Confirm the aspect-filter branch fires
     if (vehicleFilter) {
-      console.log('✔️ vehicleFilter is non-empty, will apply aspect_filter');
       const aspectFilter = `categoryId:6001,${vehicleFilter}`;
-      console.log('🔗 aspect_filter to append:', aspectFilter);
       searchUrl.searchParams.append('aspect_filter', aspectFilter);
-      console.log('🔍 [URGENT DEBUG] Successfully added aspect_filter to URL!');
-    } else {
-      console.warn('⚠️ vehicleFilter was empty—no aspect_filter applied!');
+      console.log(`Applied aspect_filter: ${aspectFilter}`);
     }
     
     if (compatibilityFilter) {
