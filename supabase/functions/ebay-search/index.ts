@@ -72,34 +72,6 @@ async function getOAuthToken(): Promise<string> {
   }
 }
 
-// eBay category ID mapping for better search results
-function getCategoryId(category: string): string | null {
-  const categoryMap: { [key: string]: string } = {
-    'electronics': '293',
-    'fashion': '11450',
-    'home': '11700',
-    'sporting': '888',
-    'toys': '220',
-    'business': '12576',
-    'jewelry': '281',
-    'motors': '6001', // Cars & Trucks - this is the specific category for actual vehicles
-    'collectibles': '1'
-  };
-  
-  return categoryMap[category] || null;
-}
-
-// Enhanced query processing for automotive searches
-function enhanceQueryForCategory(query: string, category: string): string {
-  // For motors category, add exclusions to filter out toys and parts
-  if (category === 'motors') {
-    const exclusions = '-toy -toys -model -diecast -matchbox -hotwheels -parts -part -accessory -accessories -keychain -poster -manual -book -shirt -decal -sticker';
-    return `${query} ${exclusions}`;
-  }
-  
-  return query;
-}
-
 function buildFilterString(filters: any): string {
   const filterParts: string[] = [];
 
@@ -213,6 +185,46 @@ function buildFilterString(filters: any): string {
   }
 
   return filterParts.join(',');
+}
+
+// eBay category ID mapping for better search results
+function getCategoryId(category: string): string | null {
+  const categoryMap: { [key: string]: string } = {
+    'electronics': '293',
+    'fashion': '11450',
+    'home': '11700',
+    'sporting': '888',
+    'toys': '220',
+    'business': '12576',
+    'jewelry': '281',
+    'motors': '6001', // Cars & Trucks - this is the specific category for actual vehicles
+    'collectibles': '1'
+  };
+  
+  return categoryMap[category] || null;
+}
+
+// Enhanced query processing for automotive searches with stronger exclusions
+function enhanceQueryForCategory(query: string, category: string): string {
+  // For motors category, add strong exclusions to filter out toys, models, and parts
+  if (category === 'motors') {
+    const exclusions = [
+      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast',
+      '-matchbox', '-hotwheels', '-hot-wheels', '-miniature', '-scale',
+      '-parts', '-part', '-accessory', '-accessories', '-component',
+      '-keychain', '-poster', '-manual', '-book', '-shirt', '-decal', 
+      '-sticker', '-emblem', '-badge', '-collectible', '-memorabilia',
+      '-remote', '-control', '-rc', '-plastic', '-metal', '-replica',
+      '-figurine', '-action', '-figure'
+    ].join(' ');
+    
+    // Add positive terms to reinforce we want actual vehicles
+    const positiveTerms = 'automobile motor vehicle transportation';
+    
+    return `${query} ${positiveTerms} ${exclusions}`;
+  }
+  
+  return query;
 }
 
 function buildAspectFilter(vehicleAspects: any): string {

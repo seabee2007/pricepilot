@@ -52,10 +52,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
         });
         setVehicleAspects(aspects);
         
-        // Show success message if we got good data
-        if (aspects.makes.length > 0) {
-          toast.success(`Loaded ${aspects.makes.length} makes, ${aspects.models.length} models, ${aspects.years.length} years`);
-        }
+        // No success toast - removed the "loaded..." notification
       } catch (error) {
         console.error('Error loading vehicle aspects:', error);
         toast.error('Failed to load vehicle options. Using fallback data.');
@@ -109,15 +106,18 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     
     setIsLoading(true);
     
-    // Build search query
+    // Build search query with vehicle-specific terms to exclude toys/parts
     const queryParts = [];
     if (selectedMake) queryParts.push(selectedMake);
     if (selectedModel) queryParts.push(selectedModel);
     if (selectedYear) queryParts.push(selectedYear);
     
-    const query = queryParts.join(' ') || 'vehicle';
+    // Add vehicle-specific terms to ensure we get actual vehicles
+    queryParts.push('vehicle', 'automobile', 'car', 'truck');
     
-    // Build filters object
+    const query = queryParts.join(' ');
+    
+    // Build filters object with enhanced vehicle filtering
     const filters: SearchFilters = {
       category: 'motors', // Cars & Trucks category
       conditionIds: condition,
@@ -211,7 +211,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
               <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
                 {mode === 'buy' 
-                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Use the filters below to find specific makes, models, and years.'
+                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Results are filtered to exclude toys, models, and parts.'
                   : 'Find completed sales of similar vehicles to help price your car or truck for sale.'
                 }
               </p>
