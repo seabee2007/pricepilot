@@ -6,7 +6,7 @@ import SaveThresholdModal from '../components/SaveThresholdModal';
 import AuthPrompt from '../components/AuthPrompt';
 import { ItemSummary, SearchFilters, SearchMode, PriceHistory } from '../types';
 import { searchLiveItems, searchCompletedItems, calculateAveragePrice } from '../lib/ebay';
-import { savePriceHistory, saveSearch, getPriceHistory } from '../lib/supabase';
+import { savePriceHistory, saveSearch, getPriceHistory, get30DayPriceHistory } from '../lib/supabase';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -85,19 +85,57 @@ const ResultsPage = () => {
           }
           results = await searchCompletedItems(query, filters);
           
-          // For sell mode, also fetch price history
-          const history = await getPriceHistory(query);
-          setPriceHistory(history);
+          // For sell mode, also fetch enhanced price history
+          try {
+            const enhancedHistory = await get30DayPriceHistory(undefined, query);
+            if (enhancedHistory && enhancedHistory.length > 0) {
+              // Convert to legacy format for compatibility
+              const legacyHistory = enhancedHistory.map(point => ({
+                id: `${query}-${point.day}`,
+                query,
+                timestamp: point.day,
+                avg_price: point.avg_price
+              }));
+              setPriceHistory(legacyHistory);
+            } else {
+              // Fallback to legacy price history
+              const history = await getPriceHistory(query);
+              setPriceHistory(history);
+            }
+          } catch (historyError) {
+            console.error('Error fetching enhanced price history, falling back to legacy:', historyError);
+            const history = await getPriceHistory(query);
+            setPriceHistory(history);
+          }
           
-          // Calculate and save average price
+          // Calculate and save average price with enhanced data
           if (results.length > 0) {
             const avgPrice = calculateAveragePrice(results);
+            const prices = results
+              .filter(item => item.price && typeof item.price.value === 'number')
+              .map(item => item.price.value);
+            
+            const minPrice = prices.length > 0 ? Math.min(...prices) : avgPrice;
+            const maxPrice = prices.length > 0 ? Math.max(...prices) : avgPrice;
+            
             if (avgPrice > 0) {
-              await savePriceHistory(query, avgPrice);
+              await savePriceHistory(query, avgPrice, undefined, minPrice, maxPrice);
               
               // Refresh price history after adding new point
-              const updatedHistory = await getPriceHistory(query);
-              setPriceHistory(updatedHistory);
+              try {
+                const updatedHistory = await get30DayPriceHistory(undefined, query);
+                if (updatedHistory && updatedHistory.length > 0) {
+                  const legacyHistory = updatedHistory.map(point => ({
+                    id: `${query}-${point.day}`,
+                    query,
+                    timestamp: point.day,
+                    avg_price: point.avg_price
+                  }));
+                  setPriceHistory(legacyHistory);
+                }
+              } catch (refreshError) {
+                console.error('Error refreshing price history:', refreshError);
+              }
             }
           }
         }
@@ -303,7 +341,12 @@ VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
           />
           
           {mode === 'sell' && !loading && (
-            <PriceHistoryChart data={priceHistory} query={query} />
+            <PriceHistoryChart 
+              data={priceHistory} 
+              query={query} 
+              showSparkline={false}
+              className="mb-8"
+            />
           )}
         </>
       )}

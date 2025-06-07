@@ -52,6 +52,15 @@ export interface UpdatePasswordData {
   password: string;
 }
 
+// Enhanced price history interface for 30-day tracking
+export interface DailyPricePoint {
+  day: string;
+  low_price: number;
+  high_price: number;
+  avg_price: number;
+  data_points: number;
+}
+
 // Authentication Functions
 export async function signUp({ email, password, fullName }: SignUpData) {
   const { data, error } = await supabase.auth.signUp({
@@ -339,7 +348,7 @@ export async function checkIfItemSaved(itemId: string): Promise<boolean> {
   return !!data;
 }
 
-// Price History Functions
+// Enhanced Price History Functions
 export async function getPriceHistory(query: string): Promise<PriceHistory[]> {
   const { data, error } = await supabase
     .from('price_history')
@@ -356,16 +365,67 @@ export async function getPriceHistory(query: string): Promise<PriceHistory[]> {
   return data || [];
 }
 
+export async function get30DayPriceHistory(searchId?: string, query?: string): Promise<DailyPricePoint[]> {
+  try {
+    let result;
+    
+    if (searchId) {
+      result = await supabase.rpc('get_30d_price_history', { 
+        p_search_id: searchId 
+      });
+    } else if (query) {
+      result = await supabase.rpc('get_30d_price_history_by_query', { 
+        p_query: query 
+      });
+    } else {
+      throw new Error('Either searchId or query must be provided');
+    }
+
+    if (result.error) {
+      console.error('Error fetching 30-day price history:', result.error);
+      throw result.error;
+    }
+
+    return (result.data || []).map((item: any) => ({
+      day: item.day,
+      low_price: parseFloat(item.low_price) || 0,
+      high_price: parseFloat(item.high_price) || 0,
+      avg_price: parseFloat(item.avg_price) || 0,
+      data_points: parseInt(item.data_points) || 0
+    }));
+  } catch (error) {
+    console.error('Error in get30DayPriceHistory:', error);
+    throw error;
+  }
+}
+
 export async function savePriceHistory(
   query: string,
-  avgPrice: number
+  avgPrice: number,
+  searchId?: string,
+  minPrice?: number,
+  maxPrice?: number
 ): Promise<void> {
+  const insertData: any = {
+    query,
+    avg_price: avgPrice,
+  };
+
+  if (searchId) {
+    insertData.search_id = searchId;
+  }
+
+  if (minPrice !== undefined) {
+    insertData.min_price = minPrice;
+  }
+
+  if (maxPrice !== undefined) {
+    insertData.max_price = maxPrice;
+  }
+
   const { error } = await supabase
     .from('price_history')
-    .insert({
-      query,
-      avg_price: avgPrice,
-    });
+    .insert(insertData);
 
   if (error) {
     console.error('Error saving price history:', error);

@@ -123,6 +123,15 @@ export interface PriceHistory {
   avg_price: number;
 }
 
+// Enhanced price history interface for 30-day tracking
+export interface DailyPricePoint {
+  day: string;
+  low_price: number;
+  high_price: number;
+  avg_price: number;
+  data_points: number;
+}
+
 export type SearchMode = 'buy' | 'sell';
 
 // Vehicle compatibility interfaces
