@@ -11,43 +11,46 @@ import SignInPage from './pages/SignInPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import NotFoundPage from './pages/NotFoundPage';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        {/* Authentication routes without layout */}
-        <Route path="/signup" element={<SignUpPage />} />
-        <Route path="/signin" element={<SignInPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <ErrorBoundary>
+      <Router>
+        <Routes>
+          {/* Authentication routes without layout */}
+          <Route path="/signup" element={<SignUpPage />} />
+          <Route path="/signin" element={<SignInPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          
+          {/* Main app routes with layout */}
+          <Route path="/*" element={
+            <Layout>
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/results" element={<ResultsPage />} />
+                <Route path="/saved-searches" element={<SavedSearchesPage />} />
+                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/success" element={<SuccessPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </Layout>
+          } />
+        </Routes>
         
-        {/* Main app routes with layout */}
-        <Route path="/*" element={
-          <Layout>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/results" element={<ResultsPage />} />
-              <Route path="/saved-searches" element={<SavedSearchesPage />} />
-              <Route path="/pricing" element={<PricingPage />} />
-              <Route path="/success" element={<SuccessPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </Layout>
-        } />
-      </Routes>
-      
-      <Toaster 
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: '#333',
-            color: '#fff',
-          },
-        }}
-      />
-    </Router>
+        <Toaster 
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#333',
+              color: '#fff',
+            },
+          }}
+        />
+      </Router>
+    </ErrorBoundary>
   );
 }
 

@@ -43,7 +43,9 @@ async function getOAuthToken(): Promise<string> {
     });
 
     if (!response.ok) {
-      throw new Error(`eBay OAuth error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('eBay OAuth response:', errorText);
+      throw new Error(`eBay OAuth error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -80,9 +82,15 @@ function buildFilterString(filters: any): string {
     filterParts.push(`sellerLocation:{${filters.sellerLocation}}`);
   }
   
-  // Buy It Now filter is already correct
+  // IMPORTANT: Include both auction and fixed price by default unless explicitly filtered
+  // This is a common issue - eBay only returns FIXED_PRICE by default
   if (filters.buyItNowOnly) {
     filterParts.push('buyingOptions:{FIXED_PRICE}');
+  } else if (filters.auctionOnly) {
+    filterParts.push('buyingOptions:{AUCTION}');
+  } else {
+    // Include both auction and fixed price items for broader results
+    filterParts.push('buyingOptions:{AUCTION|FIXED_PRICE}');
   }
 
   // Enhanced filters based on eBay Browse API documentation
@@ -250,19 +258,40 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    // Verify user authentication
+    // Require user authentication for production
     const authHeader = req.headers.get('Authorization');
+    
     if (!authHeader) {
-      throw new Error('Missing authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { 
+          status: 401, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
     }
-
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser(
       authHeader.replace('Bearer ', '')
     );
-
+    
     if (authError || !user) {
-      throw new Error('Unauthorized');
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { 
+          status: 401, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
     }
+    
+    console.log('User authenticated:', user.id);
 
     const url = new URL(req.url);
     const pathname = url.pathname;
@@ -292,8 +321,8 @@ Deno.serve(async (req) => {
     // Handle search requests
     const { query, filters = {}, pageSize = 50, pageOffset = 0, mode = 'live' } = await req.json();
 
-    if (!query) {
-      throw new Error('Search query is required');
+    if (!query || query.trim() === '') {
+      throw new Error('Search query is required and cannot be empty');
     }
 
     const token = await getOAuthToken();
@@ -311,7 +340,9 @@ Deno.serve(async (req) => {
       : `${baseApiUrl}/search`;
     
     const searchUrl = new URL(baseUrl);
-    searchUrl.searchParams.append('q', query);
+    
+    // Ensure query is properly URL encoded
+    searchUrl.searchParams.append('q', query.trim());
     searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
     if (filterString) {
@@ -326,30 +357,59 @@ Deno.serve(async (req) => {
       searchUrl.searchParams.append('buyerPostalCode', filters.postalCode);
     }
     
-    searchUrl.searchParams.append('limit', pageSize.toString());
+    // Ensure reasonable limits
+    const limit = Math.min(Math.max(pageSize, 1), 200);
+    searchUrl.searchParams.append('limit', limit.toString());
     
     if (pageOffset > 0) {
       searchUrl.searchParams.append('offset', pageOffset.toString());
     }
+
+    console.log('eBay API Request URL:', searchUrl.toString());
 
     const response = await fetch(searchUrl.toString(), {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+        'Accept': 'application/json',
       },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('eBay API Error Response:', errorText);
       throw new Error(`eBay API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('eBay API Response:', JSON.stringify(data, null, 2));
 
-    // Process items to include compatibility information
+    // Process items to include compatibility information and normalize data types
     const processedItems = (data.itemSummaries || []).map((item: any) => ({
       ...item,
+      // Ensure price values are numbers, not strings
+      price: item.price ? {
+        ...item.price,
+        value: parseFloat(item.price.value) || 0
+      } : undefined,
+      
+      // Ensure currentBidPrice values are numbers if present
+      currentBidPrice: item.currentBidPrice ? {
+        ...item.currentBidPrice,
+        value: parseFloat(item.currentBidPrice.value) || 0
+      } : undefined,
+      
+      // Ensure shipping cost values are numbers
+      shippingOptions: item.shippingOptions ? item.shippingOptions.map((option: any) => ({
+        ...option,
+        shippingCost: option.shippingCost ? {
+          ...option.shippingCost,
+          value: parseFloat(option.shippingCost.value) || 0
+        } : undefined
+      })) : undefined,
+      
+      // Process compatibility information
       compatibility: item.compatibilityProperties ? {
         compatibilityMatch: item.compatibilityMatch || 'UNKNOWN',
         compatibilityProperties: item.compatibilityProperties || []
@@ -360,7 +420,8 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         items: processedItems,
         total: data.total || 0,
-        href: data.href || ''
+        href: data.href || '',
+        warnings: data.warnings || []
       }),
       { 
         headers: { 

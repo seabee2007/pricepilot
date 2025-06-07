@@ -1,5 +1,77 @@
 import { ItemSummary, SearchFilters, VehicleCompatibility, ItemCompatibility, DealItem, EbayEvent, EventItem, DealSearchFilters, EventSearchFilters } from '../types';
 import { supabase } from './supabase';
+import { config } from './config';
+
+// Rate limiting and request deduplication
+const requestCache = new Map<string, Promise<any>>();
+const lastRequestTime = new Map<string, number>();
+const MIN_REQUEST_INTERVAL = config.rateLimit.minRequestInterval;
+const MAX_CONCURRENT_REQUESTS = config.rateLimit.maxConcurrentRequests;
+let activeRequestCount = 0;
+
+function createRequestKey(endpoint: string, params: any): string {
+  return `${endpoint}:${JSON.stringify(params)}`;
+}
+
+function shouldThrottleRequest(key: string): boolean {
+  const lastTime = lastRequestTime.get(key);
+  if (lastTime && Date.now() - lastTime < MIN_REQUEST_INTERVAL) {
+    return true;
+  }
+  
+  // Also check if we have too many concurrent requests
+  if (activeRequestCount >= MAX_CONCURRENT_REQUESTS) {
+    return true;
+  }
+  
+  return false;
+}
+
+async function makeThrottledRequest<T>(
+  key: string,
+  requestFn: () => Promise<T>
+): Promise<T> {
+  // Check if we should throttle this request
+  if (shouldThrottleRequest(key)) {
+    const lastTime = lastRequestTime.get(key);
+    const timeRemaining = lastTime ? Math.ceil((MIN_REQUEST_INTERVAL - (Date.now() - lastTime)) / 1000) : 0;
+    
+    if (activeRequestCount >= MAX_CONCURRENT_REQUESTS) {
+      throw new Error(`Too many concurrent requests (${activeRequestCount}/${MAX_CONCURRENT_REQUESTS}). Please wait and try again.`);
+    } else {
+      throw new Error(`Rate limit exceeded. Please wait ${timeRemaining} seconds before making another identical request.`);
+    }
+  }
+
+  // Check if there's already a pending request for this key
+  if (requestCache.has(key)) {
+    if (config.debug.showConsoleMessages) {
+      console.log(`Reusing pending request for: ${key.split(':')[0]}`);
+    }
+    return requestCache.get(key);
+  }
+
+  // Increment active request counter
+  activeRequestCount++;
+  if (config.debug.showConsoleMessages) {
+    console.log(`Starting request ${activeRequestCount}/${MAX_CONCURRENT_REQUESTS}: ${key.split(':')[0]}`);
+  }
+
+  // Make the request
+  const promise = requestFn()
+    .finally(() => {
+      // Clean up cache and update last request time
+      requestCache.delete(key);
+      lastRequestTime.set(key, Date.now());
+      activeRequestCount--;
+      if (config.debug.showConsoleMessages) {
+        console.log(`Completed request. Active: ${activeRequestCount}/${MAX_CONCURRENT_REQUESTS}`);
+      }
+    });
+
+  requestCache.set(key, promise);
+  return promise;
+}
 
 export async function searchLiveItems(
   query: string, 
@@ -7,39 +79,104 @@ export async function searchLiveItems(
   pageSize: number = 50,
   pageOffset: number = 0
 ): Promise<ItemSummary[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      throw new Error('Authentication required');
-    }
-
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        filters,
-        pageSize,
-        pageOffset,
-        mode: 'live'
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to search eBay');
-    }
-
-    const data = await response.json();
-    return data.items || [];
-  } catch (error) {
-    console.error('Error searching live items:', error);
-    throw error;
+  console.log('🔍 searchLiveItems called with:', { query, filters, pageSize, pageOffset });
+  
+  // Check environment variables
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  console.log('🔧 Environment check:');
+  console.log('  VITE_SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
+  console.log('  VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? '✅ Set' : '❌ Missing');
+  
+  if (!supabaseUrl) {
+    throw new Error('VITE_SUPABASE_URL environment variable is not set');
   }
+  
+  const requestKey = createRequestKey('searchLiveItems', { query, filters, pageSize, pageOffset });
+  
+  return makeThrottledRequest(requestKey, async () => {
+    try {
+      console.log('🔑 Getting Supabase session...');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error('Authentication required. Please sign in to search eBay.');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'apikey': supabaseAnonKey, // Required for Supabase functions
+        'Authorization': `Bearer ${session.access_token}`,
+      };
+      
+      console.log('✅ Session found, authenticated user:', session.user.id);
+
+      // Ensure we include both auction and fixed price items by default for broader results
+      const enhancedFilters = {
+        ...filters,
+        // Don't override if user explicitly set buyItNowOnly or auctionOnly
+        ...((!filters.buyItNowOnly && !filters.auctionOnly) ? {} : {})
+      };
+
+      const functionUrl = `${supabaseUrl}/functions/v1/ebay-search`;
+      
+      console.log('🌐 Making request to:', functionUrl);
+      console.log('📦 Request payload:', {
+        query: query.trim(),
+        filters: enhancedFilters,
+        pageSize: Math.min(Math.max(pageSize, 1), 200),
+        pageOffset: Math.max(pageOffset, 0),
+        mode: 'live'
+      });
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          query: query.trim(),
+          filters: enhancedFilters,
+          pageSize: Math.min(Math.max(pageSize, 1), 200),
+          pageOffset: Math.max(pageOffset, 0),
+          mode: 'live'
+        }),
+      });
+
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response ok:', response.ok);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Response not ok. Error text:', errorText);
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ Parsed error data:', errorData);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(errorData.error || 'Failed to search eBay');
+        } catch (parseError) {
+          console.error('❌ Could not parse error response:', parseError);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(`eBay API error: ${response.status} - ${errorText}`);
+        }
+      }
+
+      const data = await response.json();
+      console.log('✅ eBay API Response received:', data);
+      return data.items || [];
+    } catch (error) {
+      console.error('💥 Error in searchLiveItems:', error);
+      throw error;
+    }
+  });
 }
 
 export async function searchCompletedItems(
@@ -48,39 +185,66 @@ export async function searchCompletedItems(
   pageSize: number = 50,
   pageOffset: number = 0
 ): Promise<ItemSummary[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      throw new Error('Authentication required');
-    }
+  const requestKey = createRequestKey('searchCompletedItems', { query, filters, pageSize, pageOffset });
+  
+  return makeThrottledRequest(requestKey, async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error('Authentication required. Please sign in to search eBay.');
+      }
 
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
+      const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        filters,
-        pageSize,
-        pageOffset,
-        mode: 'completed'
-      }),
-    });
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+      };
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to search eBay');
+      console.log('Searching completed items with query:', query);
+      console.log('Filters:', filters);
+      console.log('Authenticated user:', session.user.id);
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          query: query.trim(),
+          filters,
+          pageSize: Math.min(Math.max(pageSize, 1), 200),
+          pageOffset: Math.max(pageOffset, 0),
+          mode: 'completed'
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(errorData.error || 'Failed to search eBay');
+        } catch (parseError) {
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(`eBay API error: ${response.status} - ${errorText}`);
+        }
+      }
+
+      const data = await response.json();
+      console.log('eBay API Response:', data);
+      return data.items || [];
+    } catch (error) {
+      console.error('Error searching completed items:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    return data.items || [];
-  } catch (error) {
-    console.error('Error searching completed items:', error);
-    throw error;
-  }
+  });
 }
 
 export function calculateAveragePrice(items: ItemSummary[]): number {
@@ -190,45 +354,49 @@ export async function searchCompatibleItems(
   pageSize: number = 50,
   pageOffset: number = 0
 ): Promise<ItemSummary[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      throw new Error('Authentication required');
+  const requestKey = createRequestKey('searchCompatibleItems', { query, vehicleCompatibility, filters, pageSize, pageOffset });
+  
+  return makeThrottledRequest(requestKey, async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Authentication required');
+      }
+
+      // Add compatibility filter to the search filters
+      const enhancedFilters = {
+        ...filters,
+        compatibilityFilter: vehicleCompatibility
+      };
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          filters: enhancedFilters,
+          pageSize,
+          pageOffset,
+          mode: 'live'
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to search compatible items');
+      }
+
+      const data = await response.json();
+      return data.items || [];
+    } catch (error) {
+      console.error('Error searching compatible items:', error);
+      throw error;
     }
-
-    // Add compatibility filter to the search filters
-    const enhancedFilters = {
-      ...filters,
-      compatibilityFilter: vehicleCompatibility
-    };
-
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        filters: enhancedFilters,
-        pageSize,
-        pageOffset,
-        mode: 'live'
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to search compatible items');
-    }
-
-    const data = await response.json();
-    return data.items || [];
-  } catch (error) {
-    console.error('Error searching compatible items:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -239,35 +407,39 @@ export async function checkItemCompatibility(
   itemId: string,
   vehicleCompatibility: VehicleCompatibility
 ): Promise<ItemCompatibility> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      throw new Error('Authentication required');
+  const requestKey = createRequestKey('checkItemCompatibility', { itemId, vehicleCompatibility });
+  
+  return makeThrottledRequest(requestKey, async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Authentication required');
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search/check_compatibility`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          itemId,
+          compatibility: vehicleCompatibility
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to check item compatibility');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error checking item compatibility:', error);
+      throw error;
     }
-
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search/check_compatibility`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        itemId,
-        compatibility: vehicleCompatibility
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to check item compatibility');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error checking item compatibility:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -524,4 +696,58 @@ export async function checkDealApiAccess(): Promise<{
       message: error.message
     };
   }
+}
+
+/**
+ * Simple test function to debug eBay API integration
+ * Run this in browser console: await window.testEbayApi()
+ */
+export async function testEbayApi() {
+  console.log('🧪 Testing eBay API...');
+  
+  try {
+    const result = await searchLiveItems('test', {}, 5, 0);
+    console.log('✅ Test successful! Found items:', result.length);
+    console.log('Sample items:', result.slice(0, 2));
+    return result;
+  } catch (error) {
+    console.error('❌ Test failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+// Make it available globally for testing
+if (typeof window !== 'undefined') {
+  (window as any).testEbayApi = testEbayApi;
+  
+  // Add a more comprehensive test function
+  (window as any).testSearchAndLog = async function(query = 'test', pageSize = 10) {
+    console.log('🧪 Starting comprehensive search test...');
+    console.log('Query:', query, 'Page Size:', pageSize);
+    
+    try {
+      console.log('1️⃣ Testing searchLiveItems directly...');
+      const results = await searchLiveItems(query, {}, pageSize, 0);
+      console.log('✅ Direct API call successful! Results:', results);
+      
+      console.log('2️⃣ Testing if ResultsList can handle this data...');
+      console.log('Sample item structure:', results[0]);
+      
+      return {
+        success: true,
+        itemCount: results.length,
+        results: results,
+        sampleItem: results[0]
+      };
+    } catch (error) {
+      console.error('❌ Test failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  };
 }

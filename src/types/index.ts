@@ -43,6 +43,7 @@ export interface SearchFilters {
   freeShipping?: boolean;
   sellerLocation?: string;
   buyItNowOnly?: boolean;
+  auctionOnly?: boolean;
   postalCode?: string;
   countryCode?: string;
   
