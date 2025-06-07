@@ -370,7 +370,6 @@ Deno.serve(async (req) => {
     const response = await fetch(searchUrl.toString(), {
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
         'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
         'Accept': 'application/json',
       },
