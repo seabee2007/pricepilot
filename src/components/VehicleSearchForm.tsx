@@ -4,9 +4,9 @@ import { Car, Search, ChevronDown, Loader2, ArrowLeft, RefreshCw } from 'lucide-
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
 import { SearchFilters, SearchMode } from '../types';
-import { getVehicleAspects, refreshVehicleAspects, getModelsForMakeFromCache } from '../lib/ebay-vehicle';
+import { getVehicleAspects, refreshVehicleAspects, getModelsForMakeFromCache, getModelsForMake } from '../lib/ebay-vehicle';
 import toast from 'react-hot-toast';
-import { VehicleAspects } from '../types';
+import { VehicleAspects, VehicleAspect } from '../types';
 
 interface VehicleSearchFormProps {
   mode: SearchMode;
@@ -61,6 +61,10 @@ const VehicleSearchForm = ({
   const [freeShipping, setFreeShipping] = useState(initialFreeShipping);
   const [buyItNowOnly, setBuyItNowOnly] = useState(initialBuyItNowOnly);
 
+  // New state for dynamic model loading
+  const [dynamicModels, setDynamicModels] = useState<VehicleAspect[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+
   // Load vehicle aspects on component mount
   useEffect(() => {
     const loadAspects = async () => {
@@ -101,19 +105,34 @@ const VehicleSearchForm = ({
     }
   };
 
-  // Get available models based on selected make
-  const availableModels = Array.isArray(vehicleAspects?.models) ? getModelsForMakeFromCache(vehicleAspects, selectedMake) : [];
+  // Get available models - try dynamic loading first, fallback to cache
+  const availableModels = dynamicModels.length > 0 
+    ? dynamicModels 
+    : (Array.isArray(vehicleAspects?.models) ? getModelsForMakeFromCache(vehicleAspects, selectedMake) : []);
 
-  // Handle make selection change
-  const handleMakeChange = (make: string) => {
+  // Handle make selection change with dynamic model loading
+  const handleMakeChange = async (make: string) => {
     setSelectedMake(make);
     setSelectedModel(''); // Reset model when make changes
     
-    // Log available models for debugging
-    const models = Array.isArray(vehicleAspects?.models) ? getModelsForMakeFromCache(vehicleAspects, make) : [];
-    console.log(`Selected make: ${make}, Available models: ${models.length}`);
-    if (models.length > 0) {
-      console.log('Sample models:', models.slice(0, 5).map(m => m.displayName));
+    if (make) {
+      setLoadingModels(true);
+      try {
+        // Try to get models from Taxonomy API
+        const models = await getModelsForMake(make);
+        setDynamicModels(models);
+        console.log(`Loaded ${models.length} models for ${make} from Taxonomy API`);
+      } catch (error) {
+        console.error('Error loading models from Taxonomy API:', error);
+        // Fallback to cached data
+        const cachedModels = getModelsForMakeFromCache(vehicleAspects, make);
+        setDynamicModels(cachedModels);
+        console.log(`Using ${cachedModels.length} cached models for ${make}`);
+      } finally {
+        setLoadingModels(false);
+      }
+    } else {
+      setDynamicModels([]);
     }
   };
 
@@ -314,10 +333,17 @@ const VehicleSearchForm = ({
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={loadingAspects || refreshingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
+                disabled={!selectedMake || loadingModels}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
               >
-                <option value="">Any Model</option>
+                <option value="">
+                  {!selectedMake 
+                    ? 'Select a make first' 
+                    : loadingModels 
+                    ? 'Loading models...' 
+                    : 'All Models'
+                  }
+                </option>
                 {(availableModels || []).map((model) => (
                   <option key={model.value} value={model.value}>
                     {model.displayName}
@@ -325,7 +351,8 @@ const VehicleSearchForm = ({
                     {model.count && ` (${model.count})`}
                   </option>
                 ))}
-                {availableModels.length === 0 && selectedMake && (
+                
+                {availableModels.length === 0 && selectedMake && !loadingModels && (
                   <option value="" disabled>
                     No models found for {selectedMake}
                   </option>

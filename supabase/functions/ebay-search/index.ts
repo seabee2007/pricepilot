@@ -209,13 +209,14 @@ function getCategoryId(category: string): string | null {
 
 // SIMPLIFIED query processing for automotive searches - MUCH cleaner approach
 function enhanceQueryForCategory(query: string, category: string): string {
-  // For motors category, we rely on category filtering rather than complex exclusions
+  // Only enhance queries for motors category
   if (category === 'motors') {
     // Just add a few key positive terms to reinforce vehicle intent
     // The category filter (6001) will do the heavy lifting to exclude toys/parts
     return `${query} vehicle automobile`;
   }
   
+  // For all other categories, return query unchanged
   return query;
 }
 
