@@ -335,6 +335,20 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Only allow POST requests
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed, use POST' }),
+      { 
+        status: 405, 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
+    );
+  }
+
   try {
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -381,12 +395,95 @@ Deno.serve(async (req) => {
     
     console.log('User authenticated:', user.id);
 
+    // Parse JSON body
+    let body;
+    try {
+      body = await req.json();
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON in request body' }),
+        { 
+          status: 400, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
+    // Destructure exactly what the frontend sends
+    const {
+      query,
+      mode = 'live',
+      pageSize = 50,
+      pageOffset = 0,
+      vehicleAspects = {},
+      filters = {}
+    } = body;
+
+    // Extract nested vehicle aspects (handle both top-level and nested in filters)
+    const vehicleData = vehicleAspects || filters.vehicleAspects || {};
+    const { make, model, year, yearFrom, yearTo } = vehicleData;
+
+    // Extract other filters
+    const {
+      category,
+      conditionIds = [],
+      freeShipping = false,
+      buyItNowOnly = false,
+      sellerLocation,
+      priceRange,
+      returnsAccepted,
+      postalCode
+    } = filters;
+
+    console.log('📨 Parsed request data:', {
+      query,
+      mode,
+      pageSize,
+      pageOffset,
+      vehicleAspects: vehicleData,
+      filters: { category, conditionIds, freeShipping, buyItNowOnly }
+    });
+
+    // Validate required fields
+    if (!query || query.trim() === '') {
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameter: query' }),
+        { 
+          status: 400, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
+    // For vehicle searches, validate that we have proper vehicle aspects
+    if (category === 'motors' && (!make || !model)) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Vehicle searches require make and model', 
+          details: 'Please select a make and model for vehicle searches' 
+        }),
+        { 
+          status: 400, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
+    }
+
     const url = new URL(req.url);
     const pathname = url.pathname;
 
     // Handle compatibility check endpoint
     if (pathname.includes('/check_compatibility')) {
-      const { itemId, compatibility } = await req.json();
+      const { itemId, compatibility } = body;
       
       if (!itemId || !compatibility) {
         throw new Error('Item ID and compatibility parameters are required');
@@ -406,22 +503,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Handle search requests
-    const { query, filters = {}, pageSize = 50, pageOffset = 0, mode = 'live' } = await req.json();
-
-    if (!query || query.trim() === '') {
-      throw new Error('Search query is required and cannot be empty');
-    }
-
+    // Get token and build search
     const token = await getApplicationToken();
-    const filterString = buildFilterString(filters);
+    
+    // Build filters object for existing functions
+    const searchFilters = {
+      category,
+      conditionIds,
+      freeShipping,
+      buyItNowOnly,
+      sellerLocation,
+      priceRange,
+      returnsAccepted,
+      postalCode,
+      vehicleAspects: vehicleData
+    };
+
+    const filterString = buildFilterString(searchFilters);
     const compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
-    const aspectFilter = buildAspectFilter(filters.vehicleAspects);
+    const aspectFilter = buildAspectFilter(vehicleData);
     
     // Debug logging for vehicle search
     console.log('🔍 Vehicle search debug info:');
     console.log('  - Original query:', query);
-    console.log('  - Vehicle aspects:', JSON.stringify(filters.vehicleAspects, null, 2));
+    console.log('  - Vehicle aspects:', JSON.stringify(vehicleData, null, 2));
     console.log('  - Generated aspect filter:', aspectFilter);
     console.log('  - Other filters:', filterString);
     console.log('  - Compatibility filter:', compatibilityFilter);
