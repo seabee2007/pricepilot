@@ -164,7 +164,7 @@ export async function saveSearch(
   filters: SearchFilters, 
   priceThreshold: number
 ): Promise<SavedSearch> {
-  const user = supabase.auth.getUser();
+  const user = await getCurrentUser();
   
   if (!user) {
     throw new Error('User must be logged in to save searches');
@@ -173,6 +173,7 @@ export async function saveSearch(
   const { data, error } = await supabase
     .from('saved_searches')
     .insert({
+      user_id: user.id, // Explicitly set user_id for RLS policy
       query,
       filters,
       price_threshold: priceThreshold,
