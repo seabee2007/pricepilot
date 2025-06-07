@@ -447,6 +447,16 @@ Deno.serve(async (req) => {
       filters: { category, conditionIds, freeShipping, buyItNowOnly }
     });
 
+    // 🔍 DETAILED DEBUGGING FOR VEHICLE DATA EXTRACTION
+    console.log('🔍 [DEBUG] Raw body structure:', JSON.stringify(body, null, 2));
+    console.log('🔍 [DEBUG] Top-level vehicleAspects:', vehicleAspects);
+    console.log('🔍 [DEBUG] filters.vehicleAspects:', filters.vehicleAspects);
+    console.log('🔍 [DEBUG] Final vehicleData:', vehicleData);
+    console.log('🔍 [DEBUG] Extracted make:', make);
+    console.log('🔍 [DEBUG] Extracted model:', model);
+    console.log('🔍 [DEBUG] Extracted year:', year);
+    console.log('🔍 [DEBUG] Category:', category);
+
     // Validate required fields
     if (!query || query.trim() === '') {
       return new Response(
