@@ -16,23 +16,32 @@ let tokenCache: {
 // Retry fetch with exponential backoff for transient errors
 async function fetchWithRetry(url: string, opts: any, retries = 3): Promise<Response> {
   for (let i = 0; i < retries; i++) {
-    console.log(`🔄 Fetch attempt ${i + 1}/${retries}: ${url}`);
+    console.log(`🔄 Fetch attempt ${i + 1}/${retries}`);
+    
+    // Enhanced debugging logs
+    console.log('→ Using token:', opts.headers?.Authorization?.slice(0, 20), '…');
+    console.log('→ Fetch URL:', url);
     
     try {
       const res = await fetch(url, opts);
+      console.log('← eBay status:', res.status);
+      
+      // Clone response to read body without consuming it
+      const resClone = res.clone();
+      const body = await resClone.text();
+      console.log('← eBay body snippet:', body.slice(0, 200));
       
       if (res.ok) {
         console.log(`✅ Fetch successful on attempt ${i + 1}`);
         return res;
       }
       
-      // Log full error details
-      const errorText = await res.text();
+      // Log full error details for failed requests
       console.error(`❌ Fetch attempt ${i + 1} failed:`, {
         status: res.status,
         statusText: res.statusText,
         headers: Object.fromEntries(res.headers.entries()),
-        body: errorText
+        bodyStart: body.slice(0, 500) // Show more of the error body
       });
       
       // If it's a server error (5xx), retry with backoff
@@ -44,9 +53,11 @@ async function fetchWithRetry(url: string, opts: any, retries = 3): Promise<Resp
       }
       
       // If it's a client error (4xx) or we're out of retries, throw immediately
-      throw new Error(`eBay API error ${res.status}: ${errorText}`);
+      throw new Error(`eBay API error ${res.status}: ${body}`);
       
     } catch (error) {
+      console.error(`❌ Request error on attempt ${i + 1}:`, error);
+      
       // If it's a network error and we have retries left, continue
       if (i < retries - 1 && error instanceof TypeError) {
         const backoffMs = Math.pow(2, i) * 100;
@@ -536,6 +547,126 @@ async function buildRealVehicleInventoryData(token: string): Promise<any> {
   }
 }
 
+// MINIMAL TEST VERSION - exact same call as the working curl command
+async function testExactCurlCall(token: string): Promise<any> {
+  console.log('🧪 Testing EXACT same call as the working curl command...');
+  
+  // This is the EXACT same URL that worked in curl
+  const url = 'https://api.ebay.com/buy/browse/v1/item_summary/search?category_ids=6001&fieldgroups=ASPECT_REFINEMENTS';
+  
+  console.log('🌐 URL:', url);
+  console.log('🔑 Token prefix:', token.substring(0, 20) + '...');
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    console.log('📨 Response status:', response.status, response.statusText);
+    console.log('📨 Response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
+      throw new Error(`eBay API error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    console.log('✅ API call successful!');
+    console.log('📊 Response data keys:', Object.keys(data));
+    console.log('📊 Total items:', data.total);
+    console.log('📊 Items returned:', data.itemSummaries?.length || 0);
+    console.log('📊 Refinement exists:', !!data.refinement);
+    console.log('📊 Aspects count:', data.refinement?.aspectDistributions?.length || 0);
+
+    if (data.refinement?.aspectDistributions) {
+      console.log('🔍 Available aspects:');
+      data.refinement.aspectDistributions.slice(0, 5).forEach((aspect: any, i: number) => {
+        console.log(`  ${i + 1}. ${aspect.localizedAspectName} (${aspect.aspectValueDistributions?.length || 0} values)`);
+      });
+    }
+
+    return data;
+  } catch (error) {
+    console.error('❌ Error in testExactCurlCall:', error);
+    throw error;
+  }
+}
+
+// Extract real aspects from the API response (simplified version)
+function extractVehicleAspects(data: any): any {
+  console.log('🔍 Extracting vehicle aspects from response...');
+  
+  if (!data.refinement?.aspectDistributions) {
+    console.log('⚠️ No aspect distributions found in response');
+    return { makes: [], models: [], years: [] };
+  }
+
+  const makes: any[] = [];
+  const models: any[] = [];
+  const years: any[] = [];
+
+  data.refinement.aspectDistributions.forEach((aspect: any) => {
+    const aspectName = aspect.localizedAspectName;
+    
+    if (aspectName === 'Make') {
+      aspect.aspectValueDistributions?.forEach((value: any) => {
+        if (value.matchCount > 0) {
+          makes.push({
+            value: value.localizedAspectValue,
+            displayName: value.localizedAspectValue,
+            count: value.matchCount
+          });
+        }
+      });
+    } else if (aspectName === 'Model') {
+      aspect.aspectValueDistributions?.forEach((value: any) => {
+        if (value.matchCount > 0) {
+          models.push({
+            value: value.localizedAspectValue,
+            displayName: value.localizedAspectValue,
+            count: value.matchCount,
+            make: 'generic' // Will be updated in a full implementation
+          });
+        }
+      });
+    } else if (aspectName === 'Model Year') {
+      aspect.aspectValueDistributions?.forEach((value: any) => {
+        if (value.matchCount > 0) {
+          years.push({
+            value: value.localizedAspectValue,
+            displayName: value.localizedAspectValue,
+            count: value.matchCount
+          });
+        }
+      });
+    }
+  });
+
+  console.log(`✅ Extracted: ${makes.length} makes, ${models.length} models, ${years.length} years`);
+  
+  return {
+    makes: makes.sort((a, b) => b.count - a.count).slice(0, 25),
+    models: models.sort((a, b) => b.count - a.count).slice(0, 150), 
+    years: years.sort((a, b) => {
+      const yearA = parseInt(a.value);
+      const yearB = parseInt(b.value);
+      if (!isNaN(yearA) && !isNaN(yearB)) {
+        return yearB - yearA; // Newest first
+      }
+      return b.count - a.count;
+    }).slice(0, 35)
+  };
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests FIRST
   if (req.method === 'OPTIONS') {
@@ -577,12 +708,17 @@ Deno.serve(async (req) => {
 
     console.log('✅ User authenticated:', user.id);
 
-    // Get OAuth token and fetch REAL vehicle inventory data
-    console.log('🔑 Getting OAuth token via Client Credentials flow...');
+    // Get OAuth token and test the EXACT same call as curl
+    console.log('🔑 Getting OAuth token...');
     const token = await getOAuthToken();
-    console.log('📊 Building vehicle data with REAL inventory counts from eBay Browse API...');
-    const vehicleData = await buildRealVehicleInventoryData(token);
-    console.log('🎉 Successfully built vehicle data with REAL eBay inventory counts!');
+    
+    console.log('🧪 Testing exact same API call as the working curl command...');
+    const rawData = await testExactCurlCall(token);
+    
+    console.log('🔄 Extracting vehicle aspects...');
+    const vehicleData = extractVehicleAspects(rawData);
+    
+    console.log('🎉 Success! Returning vehicle data...');
 
     // Ensure we have valid data
     if (!vehicleData.makes || vehicleData.makes.length === 0) {
