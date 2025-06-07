@@ -370,10 +370,12 @@ export async function get30DayPriceHistory(searchId?: string, query?: string): P
     let result;
     
     if (searchId) {
+      console.log('Fetching 30-day history by search ID:', searchId);
       result = await supabase.rpc('get_30d_price_history', { 
         p_search_id: searchId 
       });
     } else if (query) {
+      console.log('Fetching 30-day history by query:', query);
       result = await supabase.rpc('get_30d_price_history_by_query', { 
         p_query: query 
       });
@@ -382,9 +384,11 @@ export async function get30DayPriceHistory(searchId?: string, query?: string): P
     }
 
     if (result.error) {
-      console.error('Error fetching 30-day price history:', result.error);
+      console.error('RPC Error details:', result.error);
       throw result.error;
     }
+
+    console.log('30-day price history result:', result);
 
     return (result.data || []).map((item: any) => ({
       day: item.day,
@@ -422,6 +426,9 @@ export async function savePriceHistory(
   if (maxPrice !== undefined) {
     insertData.max_price = maxPrice;
   }
+
+  // Also set the individual price field for compatibility
+  insertData.price = avgPrice;
 
   const { error } = await supabase
     .from('price_history')
