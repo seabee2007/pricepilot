@@ -232,17 +232,17 @@ function buildAspectFilter(vehicleAspects: any): string {
   
   const aspectParts: string[] = [];
   
-  // Build aspect filters for vehicle search
+  // Build aspect filters for vehicle search using the same format as cascading search
   if (vehicleAspects.make) {
-    aspectParts.push(`Make:${vehicleAspects.make}`);
+    aspectParts.push(`Make:{${vehicleAspects.make}}`);
   }
   
   if (vehicleAspects.model) {
-    aspectParts.push(`Model:${vehicleAspects.model}`);
+    aspectParts.push(`Model:{${vehicleAspects.model}}`);
   }
   
   if (vehicleAspects.year) {
-    aspectParts.push(`Year:${vehicleAspects.year}`);
+    aspectParts.push(`Model Year:{${vehicleAspects.year}}`); // Use "Model Year" to match eBay API
   } else if (vehicleAspects.yearFrom || vehicleAspects.yearTo) {
     // Handle year range
     if (vehicleAspects.yearFrom && vehicleAspects.yearTo) {
@@ -254,12 +254,12 @@ function buildAspectFilter(vehicleAspects: any): string {
         years.push(year.toString());
       }
       if (years.length > 0) {
-        aspectParts.push(`Year:{${years.join('|')}}`);
+        aspectParts.push(`Model Year:{${years.join('|')}}`);
       }
     } else if (vehicleAspects.yearFrom) {
-      aspectParts.push(`Year:${vehicleAspects.yearFrom}`);
+      aspectParts.push(`Model Year:{${vehicleAspects.yearFrom}}`);
     } else if (vehicleAspects.yearTo) {
-      aspectParts.push(`Year:${vehicleAspects.yearTo}`);
+      aspectParts.push(`Model Year:{${vehicleAspects.yearTo}}`);
     }
   }
   
@@ -417,6 +417,14 @@ Deno.serve(async (req) => {
     const filterString = buildFilterString(filters);
     const compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
     const aspectFilter = buildAspectFilter(filters.vehicleAspects);
+    
+    // Debug logging for vehicle search
+    console.log('🔍 Vehicle search debug info:');
+    console.log('  - Original query:', query);
+    console.log('  - Vehicle aspects:', JSON.stringify(filters.vehicleAspects, null, 2));
+    console.log('  - Generated aspect filter:', aspectFilter);
+    console.log('  - Other filters:', filterString);
+    console.log('  - Compatibility filter:', compatibilityFilter);
     
     // Choose endpoint based on mode and environment (sandbox vs production)
     const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');

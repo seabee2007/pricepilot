@@ -229,10 +229,8 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     if (selectedModel) queryParts.push(selectedModel);
     if (selectedYear) queryParts.push(selectedYear);
     
-    // Add vehicle-specific terms to ensure we get actual vehicles
-    queryParts.push('vehicle', 'automobile', 'car', 'truck');
-    
-    const query = queryParts.join(' ');
+    // Use a simple query for vehicle searches since we're using aspect filters
+    const query = queryParts.length > 0 ? queryParts.join(' ') : 'vehicle';
     
     // Build filters object with enhanced vehicle filtering
     const filters: SearchFilters = {
