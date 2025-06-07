@@ -409,8 +409,6 @@ Deno.serve(async (req) => {
 
     const token = await getOAuthToken();
     const filterString = buildFilterString(filters);
-    const compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
-    const aspectFilter = buildAspectFilter(filters.vehicleAspects);
     
     // Choose endpoint based on mode and environment (sandbox vs production)
     const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
@@ -430,9 +428,7 @@ Deno.serve(async (req) => {
     console.log('🔍 Enhanced query:', enhancedQuery);
     console.log('🏷️ Category:', filters.category);
     console.log('🚗 Vehicle aspects:', filters.vehicleAspects);
-    console.log('🎯 Aspect filter:', aspectFilter);
     console.log('🔧 Filter string:', filterString);
-    console.log('🔗 Compatibility filter:', compatibilityFilter);
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
@@ -443,7 +439,7 @@ Deno.serve(async (req) => {
       searchUrl.searchParams.append('category_ids', '6001'); // Cars & Trucks category
       console.log('🚗 FORCED category filter for motors: 6001 (Cars & Trucks)');
       
-      // For vehicle searches, add additional filters to ensure we get actual vehicles
+      // For vehicle searches, keep it simple - just use basic filters
       const vehicleFilters = [];
       
       // Add the existing filter string
@@ -451,11 +447,8 @@ Deno.serve(async (req) => {
         vehicleFilters.push(filterString);
       }
       
-      // Add vehicle-specific filters to exclude parts/accessories
-      vehicleFilters.push('itemLocationCountry:US'); // Focus on US vehicles
-      
-      // Try to exclude obvious parts categories
-      vehicleFilters.push('excludeCategoryIds:{33559,6030,6031,34998}'); // Exclude parts categories
+      // Simple location filter to focus on US vehicles
+      vehicleFilters.push('itemLocationCountry:US');
       
       // Combine all filters
       if (vehicleFilters.length > 0) {
@@ -476,16 +469,6 @@ Deno.serve(async (req) => {
       if (filterString) {
         searchUrl.searchParams.append('filter', filterString);
       }
-    }
-    
-    if (compatibilityFilter) {
-      searchUrl.searchParams.append('compatibility_filter', compatibilityFilter);
-    }
-    
-    // Add aspect filter for vehicle searches - this is KEY for getting actual vehicles
-    if (aspectFilter) {
-      searchUrl.searchParams.append('aspect_filter', aspectFilter);
-      console.log(`🎯 Applied aspect filter: ${aspectFilter}`);
     }
     
     if (filters.postalCode) {
