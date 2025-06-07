@@ -234,7 +234,7 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
 
     // Prepare email payload
     const emailPayload = {
-      from: "PricePilot Alerts <alerts@pricepilot.app>",
+      from: "PricePilot Alerts <alerts@pricepilot.online>",
       to: [userEmail],
       subject: `🎉 Price Alert: ${query} dropped to $${newPrice.toFixed(2)}!`,
       html: emailHtml,
