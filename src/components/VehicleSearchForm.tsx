@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, Search, ChevronDown, Loader2 } from 'lucide-react';
+import { Car, Search, ChevronDown, Loader2, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
 import { SearchFilters } from '../types';
@@ -9,9 +9,10 @@ import toast from 'react-hot-toast';
 
 interface VehicleSearchFormProps {
   onSearch?: (query: string, filters: SearchFilters) => void;
+  onBack?: () => void;
 }
 
-const VehicleSearchForm = ({ onSearch }: VehicleSearchFormProps) => {
+const VehicleSearchForm = ({ onSearch, onBack }: VehicleSearchFormProps) => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingAspects, setLoadingAspects] = useState(false);
@@ -130,22 +131,43 @@ const VehicleSearchForm = ({ onSearch }: VehicleSearchFormProps) => {
     setBuyItNowOnly(false);
   };
 
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-4xl mx-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+    <div className="w-full max-w-4xl mx-auto">
+      {/* Header with back button */}
+      <div className="bg-blue-800 dark:bg-blue-700 p-4 text-white text-center rounded-t-lg">
+        <div className="flex items-center justify-between">
+          {onBack && (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="flex items-center text-blue-200 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </button>
+          )}
+          <h2 className="text-xl font-semibold flex-1">
+            Search Cars & Trucks
+          </h2>
+          <div className="w-16"></div> {/* Spacer for centering */}
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-b-lg shadow-md p-6">
+        {/* Vehicle Search Description */}
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <div className="flex items-center">
-            <Car className="h-6 w-6 text-blue-600 dark:text-blue-500 mr-2" />
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Vehicle Search</h2>
+            <Car className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
+            <p className="text-blue-800 dark:text-blue-200 text-sm">
+              Search for actual vehicles in eBay's Cars & Trucks category. Use the filters below to find specific makes, models, and years.
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={clearForm}
-            className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            Clear All
-          </button>
         </div>
 
         {loadingAspects && (
@@ -349,8 +371,16 @@ const VehicleSearchForm = ({ onSearch }: VehicleSearchFormProps) => {
           </div>
         </div>
 
-        {/* Search Button */}
-        <div className="flex justify-center">
+        {/* Action Buttons */}
+        <div className="flex justify-between items-center">
+          <button
+            type="button"
+            onClick={clearForm}
+            className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            Clear All
+          </button>
+          
           <Button
             type="submit"
             disabled={isLoading || loadingAspects}
@@ -361,8 +391,8 @@ const VehicleSearchForm = ({ onSearch }: VehicleSearchFormProps) => {
             Search Vehicles
           </Button>
         </div>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 };
 

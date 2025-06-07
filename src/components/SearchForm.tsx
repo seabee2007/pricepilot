@@ -13,6 +13,7 @@ import { Recorder } from 'vmsg';
 
 interface SearchFormProps {
   mode: SearchMode;
+  onCategoryChange?: (category: string) => void;
 }
 
 // Create recorder instance but don't initialize it yet
@@ -21,7 +22,7 @@ const createRecorder = () => new Recorder({
   shimURL: '/vmsg.js',
 });
 
-const SearchForm = ({ mode }: SearchFormProps) => {
+const SearchForm = ({ mode, onCategoryChange }: SearchFormProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -36,6 +37,14 @@ const SearchForm = ({ mode }: SearchFormProps) => {
   const [buyItNowOnly, setBuyItNowOnly] = useState(false);
   const [userLocation, setUserLocation] = useState<LocationData>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Handle category change and notify parent
+  const handleCategoryChange = (newCategory: string) => {
+    setCategory(newCategory);
+    if (onCategoryChange) {
+      onCategoryChange(newCategory);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,7 +206,7 @@ const SearchForm = ({ mode }: SearchFormProps) => {
           <div className="relative">
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => handleCategoryChange(e.target.value)}
               className="appearance-none w-full sm:w-44 px-4 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-lg sm:rounded-r-none text-gray-700 dark:text-gray-200 font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Categories</option>
