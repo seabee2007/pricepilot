@@ -1,7 +1,7 @@
 // This is a Supabase Edge Function that runs on a schedule to check for price alerts
 // and send notifications when prices drop below thresholds
 
-import { createClient } from "npm:@supabase/supabase-js@2.39.8";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 // Types
 interface SavedSearch {
