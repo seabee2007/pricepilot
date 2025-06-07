@@ -406,13 +406,12 @@ Deno.serve(async (req) => {
     }
     
     // Parse request body to check for test email trigger
-    let requestBody = {};
+    let requestBody: any = {};
     try {
-      if (req.body) {
-        const text = await req.text();
-        if (text) {
-          requestBody = JSON.parse(text);
-        }
+      const requestText = await req.text();
+      if (requestText) {
+        requestBody = JSON.parse(requestText);
+        console.log("📋 Parsed request body:", requestBody);
       }
     } catch (parseError) {
       console.log("Could not parse request body, continuing with normal flow");
@@ -422,35 +421,33 @@ Deno.serve(async (req) => {
     if (requestBody?.trigger === 'test-email' || requestBody?.forceEmail) {
       console.log("📧 Force sending test email...");
       
-      // Get user from auth header
-      const authToken = authHeader?.replace('Bearer ', '');
-      if (!authToken) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: "No auth token provided for test email",
-            timestamp: new Date().toISOString()
-          }),
-          {
-            headers: { 
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*"
-            },
-            status: 401,
-          }
-        );
-      }
-      
       try {
-        // Verify the user token and get user info
-        const { data: { user }, error: userError } = await supabase.auth.getUser(authToken);
-        
-        if (userError || !user) {
-          throw new Error("Invalid auth token");
+        // Get user from auth header - use service role client to verify token
+        const authToken = authHeader?.replace('Bearer ', '');
+        if (!authToken) {
+          throw new Error("No auth token provided for test email");
         }
         
+        // Create a client with the user's token to get their info
+        const userSupabase = createClient(supabaseUrl, supabaseKey, {
+          global: {
+            headers: {
+              Authorization: `Bearer ${authToken}`
+            }
+          }
+        });
+        
+        const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+        
+        if (userError || !user) {
+          console.error("Failed to get user:", userError);
+          throw new Error("Invalid auth token or user not found");
+        }
+        
+        console.log(`📧 Sending test email to user: ${user.email} (${user.id})`);
+        
         // Force send a test email
-        await sendPriceAlert(user.id, "iPhone 13", 599.99, 699.99);
+        await sendPriceAlert(user.id, "iPhone 13 (Test Alert)", 599.99, 699.99);
         
         return new Response(
           JSON.stringify({ 
