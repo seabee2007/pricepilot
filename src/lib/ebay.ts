@@ -1195,15 +1195,20 @@ export async function getVehicleAspects(
       const data = await response.json();
       console.log('✅ Vehicle aspects response received:', data);
       
-      // Parse aspectDistributions from the response
+      // Parse aspectDistributions from the response - check both possible locations
       const makes: Array<{ name: string; count: number }> = [];
       const models: Array<{ name: string; count: number }> = [];
       const years: Array<{ name: string; count: number }> = [];
       
-      if (data.aspectDistributions) {
-        console.log('✅ Found aspectDistributions:', data.aspectDistributions.length);
+      // eBay returns aspectDistributions under refinement object
+      const aspectDistributions = data.aspectDistributions 
+                               || data.refinement?.aspectDistributions 
+                               || [];
+      
+      if (aspectDistributions.length > 0) {
+        console.log('✅ Found aspectDistributions:', aspectDistributions.length);
         
-        data.aspectDistributions.forEach((dist: any) => {
+        aspectDistributions.forEach((dist: any) => {
           const label = dist.refinementLabel || dist.localizedAspectName || '';
           const values = dist.values || dist.aspectValueDistributions || [];
           
@@ -1235,6 +1240,9 @@ export async function getVehicleAspects(
       } else {
         console.log('❌ No aspectDistributions found in response');
         console.log('🔍 Available keys:', Object.keys(data));
+        if (data.refinement) {
+          console.log('🔍 Refinement keys:', Object.keys(data.refinement));
+        }
       }
       
       // Sort results
