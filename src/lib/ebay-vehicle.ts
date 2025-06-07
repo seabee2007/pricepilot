@@ -234,13 +234,91 @@ export function getModelsForMakeFromCache(vehicleAspects: VehicleAspects, make: 
   
   console.log(`Found ${makeModels.length} models for make: ${make}`);
   
-  // If no specific models found for this make, return top generic models
+  // If no specific models found for this make, generate some common models for popular makes
   if (makeModels.length === 0) {
-    console.log(`No specific models found for ${make}, returning top generic models`);
+    console.log(`No specific models found for ${make}, generating common models`);
+    
+    // Generate common models for popular makes
+    const commonModels = getCommonModelsForMake(make);
+    if (commonModels.length > 0) {
+      console.log(`Generated ${commonModels.length} common models for ${make}`);
+      return commonModels;
+    }
+    
+    // Final fallback to top generic models
+    console.log(`No common models available for ${make}, returning top generic models`);
     return vehicleAspects.models.slice(0, 20);
   }
   
   return makeModels;
+}
+
+// Generate common models for popular vehicle makes
+function getCommonModelsForMake(make: string): VehicleAspect[] {
+  const commonModels: { [key: string]: VehicleAspect[] } = {
+    'Ford': [
+      { value: 'F-150', displayName: 'F-150', count: 2500, make: 'Ford' },
+      { value: 'Mustang', displayName: 'Mustang', count: 900, make: 'Ford' },
+      { value: 'Explorer', displayName: 'Explorer', count: 800, make: 'Ford' },
+      { value: 'Escape', displayName: 'Escape', count: 700, make: 'Ford' },
+      { value: 'Fusion', displayName: 'Fusion', count: 600, make: 'Ford' },
+      { value: 'F-250', displayName: 'F-250', count: 500, make: 'Ford' },
+      { value: 'Edge', displayName: 'Edge', count: 400, make: 'Ford' },
+      { value: 'Expedition', displayName: 'Expedition', count: 300, make: 'Ford' }
+    ],
+    'Chevrolet': [
+      { value: 'Silverado', displayName: 'Silverado', count: 1800, make: 'Chevrolet' },
+      { value: 'Camaro', displayName: 'Camaro', count: 800, make: 'Chevrolet' },
+      { value: 'Equinox', displayName: 'Equinox', count: 700, make: 'Chevrolet' },
+      { value: 'Malibu', displayName: 'Malibu', count: 600, make: 'Chevrolet' },
+      { value: 'Tahoe', displayName: 'Tahoe', count: 500, make: 'Chevrolet' },
+      { value: 'Impala', displayName: 'Impala', count: 400, make: 'Chevrolet' },
+      { value: 'Corvette', displayName: 'Corvette', count: 300, make: 'Chevrolet' },
+      { value: 'Cruze', displayName: 'Cruze', count: 500, make: 'Chevrolet' }
+    ],
+    'Toyota': [
+      { value: 'Camry', displayName: 'Camry', count: 1200, make: 'Toyota' },
+      { value: 'RAV4', displayName: 'RAV4', count: 1000, make: 'Toyota' },
+      { value: 'Corolla', displayName: 'Corolla', count: 900, make: 'Toyota' },
+      { value: 'Highlander', displayName: 'Highlander', count: 700, make: 'Toyota' },
+      { value: 'Prius', displayName: 'Prius', count: 600, make: 'Toyota' },
+      { value: 'Tacoma', displayName: 'Tacoma', count: 800, make: 'Toyota' },
+      { value: 'Sienna', displayName: 'Sienna', count: 400, make: 'Toyota' },
+      { value: '4Runner', displayName: '4Runner', count: 500, make: 'Toyota' }
+    ],
+    'Honda': [
+      { value: 'Civic', displayName: 'Civic', count: 1100, make: 'Honda' },
+      { value: 'Accord', displayName: 'Accord', count: 1000, make: 'Honda' },
+      { value: 'CR-V', displayName: 'CR-V', count: 900, make: 'Honda' },
+      { value: 'Pilot', displayName: 'Pilot', count: 600, make: 'Honda' },
+      { value: 'Odyssey', displayName: 'Odyssey', count: 500, make: 'Honda' },
+      { value: 'Fit', displayName: 'Fit', count: 400, make: 'Honda' },
+      { value: 'Ridgeline', displayName: 'Ridgeline', count: 300, make: 'Honda' },
+      { value: 'HR-V', displayName: 'HR-V', count: 350, make: 'Honda' }
+    ],
+    'Dodge': [
+      { value: 'Charger', displayName: 'Charger', count: 800, make: 'Dodge' },
+      { value: 'Challenger', displayName: 'Challenger', count: 600, make: 'Dodge' },
+      { value: 'Ram 1500', displayName: 'Ram 1500', count: 1200, make: 'Dodge' },
+      { value: 'Durango', displayName: 'Durango', count: 500, make: 'Dodge' },
+      { value: 'Journey', displayName: 'Journey', count: 400, make: 'Dodge' },
+      { value: 'Grand Caravan', displayName: 'Grand Caravan', count: 350, make: 'Dodge' },
+      { value: 'Dart', displayName: 'Dart', count: 300, make: 'Dodge' },
+      { value: 'Viper', displayName: 'Viper', count: 100, make: 'Dodge' }
+    ],
+    'BMW': [
+      { value: '3 Series', displayName: '3 Series', count: 800, make: 'BMW' },
+      { value: '5 Series', displayName: '5 Series', count: 600, make: 'BMW' },
+      { value: 'X3', displayName: 'X3', count: 500, make: 'BMW' },
+      { value: 'X5', displayName: 'X5', count: 550, make: 'BMW' },
+      { value: '7 Series', displayName: '7 Series', count: 300, make: 'BMW' },
+      { value: 'Z4', displayName: 'Z4', count: 200, make: 'BMW' },
+      { value: 'i3', displayName: 'i3', count: 150, make: 'BMW' },
+      { value: '1 Series', displayName: '1 Series', count: 250, make: 'BMW' }
+    ]
+  };
+  
+  return commonModels[make] || [];
 }
 
 // Enhanced fallback vehicle data with comprehensive model coverage

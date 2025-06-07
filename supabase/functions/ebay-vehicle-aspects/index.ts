@@ -171,14 +171,13 @@ async function getCompatibilityPropertyValues(
 async function getVehicleAspectsFromTaxonomy(token: string): Promise<VehicleAspects> {
   console.log('Starting Taxonomy API vehicle aspects collection...');
   
-  // Use the auto parts category that supports compatibility
-  // Category 6001 (Cars & Trucks) doesn't support compatibility properties
-  // We need to use a parts category that does support it
-  const categoryId = '33559'; // Car & Truck Parts & Accessories - this should support compatibility
+  // Use Cars & Trucks category (6001) for vehicle compatibility
+  // This is the main vehicle category that should support compatibility properties
+  const categoryId = '6001'; // Cars & Trucks - the main vehicle category
   
   try {
     // First, get the compatibility properties for this category
-    console.log('Getting compatibility properties...');
+    console.log('Getting compatibility properties for Cars & Trucks category (6001)...');
     const compatibilityProperties = await getCompatibilityProperties(token, categoryId);
     console.log('Found compatibility properties:', compatibilityProperties.map(p => p.name));
     
