@@ -4,7 +4,7 @@ import { Car, Search, ChevronDown, Loader2, ArrowLeft, RefreshCw } from 'lucide-
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
 import { SearchFilters, SearchMode } from '../types';
-import { getVehicleAspects, VehicleAspects, refreshVehicleAspects, getModelsForMake, getYearsForMakeModel } from '../lib/ebay-vehicle';
+import { getVehicleAspects } from '../lib/ebay';
 import toast from 'react-hot-toast';
 
 interface VehicleSearchFormProps {
@@ -13,11 +13,22 @@ interface VehicleSearchFormProps {
   onBack?: () => void;
 }
 
+// Simple type for vehicle aspects from Browse API
+interface VehicleAspect {
+  name: string;
+  count: number;
+}
+
+interface VehicleAspects {
+  makes: VehicleAspect[];
+  models: VehicleAspect[];
+  years: VehicleAspect[];
+}
+
 const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingAspects, setLoadingAspects] = useState(false);
-  const [refreshingAspects, setRefreshingAspects] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
   const [loadingYears, setLoadingYears] = useState(false);
   
@@ -27,7 +38,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
   const [selectedYear, setSelectedYear] = useState('');
   const [yearRange, setYearRange] = useState({ from: '', to: '' });
   
-  // Available options from eBay API (cascading)
+  // Available options from Browse API only
   const [availableMakes, setAvailableMakes] = useState<VehicleAspects['makes']>([]);
   const [availableModels, setAvailableModels] = useState<VehicleAspects['models']>([]);
   const [availableYears, setAvailableYears] = useState<VehicleAspects['years']>([]);
@@ -38,179 +49,101 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
   const [freeShipping, setFreeShipping] = useState(false);
   const [buyItNowOnly, setBuyItNowOnly] = useState(false);
 
-  // Load initial vehicle aspects (makes) on component mount
+  // Load initial makes on component mount using Browse API
   useEffect(() => {
-    const loadInitialAspects = async () => {
-      console.log('🚀 [VehicleSearchForm] Component mounted, loading initial vehicle aspects (makes)...');
-      setLoadingAspects(true);
-      
-      try {
-        console.log('📞 [VehicleSearchForm] Calling getVehicleAspects() for initial load...');
-        const aspects = await getVehicleAspects(); // No filters = get all makes
-        
-        console.log('✅ [VehicleSearchForm] Initial vehicle aspects loaded successfully:', {
-          makes: aspects.makes.length,
-          models: aspects.models.length,
-          years: aspects.years.length
-        });
-        
-        // Log sample data to verify real counts
-        if (aspects.makes.length > 0) {
-          console.log('📊 [VehicleSearchForm] Sample makes with real counts:', 
-            aspects.makes.slice(0, 5).map(m => `${m.displayName}(${m.count})`)
-          );
-        }
-        
-        setAvailableMakes(aspects.makes);
-        // For initial load, we might also get some generic models/years
-        setAvailableModels(aspects.models || []);
-        setAvailableYears(aspects.years || []);
-        
-        console.log('💾 [VehicleSearchForm] Initial aspects stored in component state');
-      } catch (error) {
-        console.error('❌ [VehicleSearchForm] Error loading initial vehicle aspects:', {
-          errorType: error?.constructor?.name,
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: new Date().toISOString()
-        });
-        
-        // Parse error message to show user-friendly info
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        if (errorMessage.includes('eBay internal system') || errorMessage.includes('Internal error')) {
-          toast.error('eBay\'s vehicle data is temporarily unavailable. Please try again in a few minutes.');
-        } else if (errorMessage.includes('Authentication')) {
-          toast.error('Authentication error. Please try refreshing the page.');
-        } else {
-          toast.error('Unable to load vehicle data from eBay. Please try again later.');
-        }
-      } finally {
-        console.log('🏁 [VehicleSearchForm] Loading initial aspects completed');
-        setLoadingAspects(false);
-      }
-    };
-
-    loadInitialAspects();
+    loadInitialMakes();
   }, []);
 
-  // Handle refresh of vehicle aspects
-  const handleRefreshAspects = async () => {
-    console.log('🔄 [VehicleSearchForm] User triggered refresh of vehicle aspects');
-    setRefreshingAspects(true);
+  const loadInitialMakes = async () => {
+    console.log('🚀 [VehicleSearchForm] Component mounted, loading initial vehicle aspects (makes)...');
+    setLoadingAspects(true);
     
     try {
-      console.log('📞 [VehicleSearchForm] Calling refreshVehicleAspects...');
-      const aspects = await refreshVehicleAspects();
+      console.log('📞 [VehicleSearchForm] Calling getVehicleAspects() for initial load...');
+      const aspects = await getVehicleAspects(); // No filters = get all makes
       
-      console.log('✅ [VehicleSearchForm] Refresh completed successfully:', {
-        makes: aspects.makes.length,
-        models: aspects.models.length,
-        years: aspects.years.length
-      });
+      console.log('✅ [VehicleSearchForm] Initial makes loaded:', aspects.makes.length);
+      setAvailableMakes(aspects.makes || []);
       
-      setAvailableMakes(aspects.makes);
-      setAvailableModels(aspects.models || []);
-      setAvailableYears(aspects.years || []);
-      
-      console.log('💾 [VehicleSearchForm] Refreshed data stored in component state');
-      toast.success('Vehicle data refreshed with latest eBay inventory!');
-    } catch (error) {
-      console.error('❌ [VehicleSearchForm] Error refreshing vehicle aspects:', {
-        errorType: error?.constructor?.name,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      });
-      
-      // Parse error message to show user-friendly info  
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      if (errorMessage.includes('eBay internal system') || errorMessage.includes('Internal error')) {
-        toast.error('eBay\'s servers are temporarily unavailable. Please try again in a few minutes.');
-      } else {
-        toast.error('Failed to refresh vehicle data from eBay. Please try again later.');
+      // For initial load, also set available models and years if returned
+      if (aspects.models?.length > 0) {
+        setAvailableModels(aspects.models);
       }
+      if (aspects.years?.length > 0) {
+        setAvailableYears(aspects.years);
+      }
+    } catch (error) {
+      console.error('❌ [VehicleSearchForm] Error loading initial makes:', error);
+      toast.error('Failed to load vehicle makes. Please try again.');
     } finally {
-      console.log('🏁 [VehicleSearchForm] Refresh completed');
-      setRefreshingAspects(false);
+      setLoadingAspects(false);
     }
   };
 
-  // Handle make selection change - triggers model loading
-  const handleMakeChange = async (make: string) => {
-    console.log(`🎯 [VehicleSearchForm] User selected make: "${make}"`);
-    console.log('   - Previous make:', selectedMake);
-    console.log('   - Previous model:', selectedModel);
+  // Load models when make is selected using Browse API
+  const handleMakeChange = async (makeValue: string) => {
+    console.log('🔄 [VehicleSearchForm] Make changed:', makeValue);
+    setSelectedMake(makeValue);
+    setSelectedModel(''); // Clear model selection
+    setSelectedYear(''); // Clear year selection
+    setAvailableModels([]);
+    setAvailableYears([]);
     
-    setSelectedMake(make);
-    setSelectedModel(''); // Reset model when make changes
-    setSelectedYear(''); // Reset year when make changes
-    setAvailableModels([]); // Clear previous models
-    setAvailableYears([]); // Clear previous years
-    
-    if (!make) {
-      console.log('📝 [VehicleSearchForm] Make cleared, resetting to initial state');
+    if (!makeValue) {
+      console.log('   - Make cleared, resetting to initial state');
       return;
     }
     
-    // Load models for the selected make
-    console.log('📞 [VehicleSearchForm] Loading models for selected make...');
     setLoadingModels(true);
-    
     try {
-      const models = await getModelsForMake(make);
-      console.log(`✅ [VehicleSearchForm] Found ${models.length} models for make: ${make}`);
+      console.log('📞 [VehicleSearchForm] Loading models for make:', makeValue);
+      const aspects = await getVehicleAspects(makeValue); // Filter by make
       
-      if (models.length > 0) {
-        console.log('📊 [VehicleSearchForm] Sample models for this make:', 
-          models.slice(0, 5).map(m => `${m.displayName} (${m.count})`)
-        );
+      console.log('✅ [VehicleSearchForm] Models loaded for make:', makeValue, aspects.models.length);
+      setAvailableModels(aspects.models || []);
+      
+      // Also update years if returned
+      if (aspects.years?.length > 0) {
+        setAvailableYears(aspects.years);
       }
-      
-      setAvailableModels(models);
     } catch (error) {
-      console.error(`❌ [VehicleSearchForm] Error loading models for make ${make}:`, error);
-      toast.error(`Failed to load models for ${make}. Please try again.`);
+      console.error('❌ [VehicleSearchForm] Error loading models for make:', makeValue, error);
+      toast.error(`Failed to load models for ${makeValue}`);
     } finally {
       setLoadingModels(false);
     }
   };
 
-  // Handle model selection change - triggers year loading
-  const handleModelChange = async (model: string) => {
-    console.log(`🎯 [VehicleSearchForm] User selected model: "${model}"`);
-    console.log('   - Current make:', selectedMake);
-    console.log('   - Previous model:', selectedModel);
+  // Load years when model is selected using Browse API
+  const handleModelChange = async (modelValue: string) => {
+    console.log('🔄 [VehicleSearchForm] Model changed:', modelValue);
+    setSelectedModel(modelValue);
+    setSelectedYear(''); // Clear year selection
+    setAvailableYears([]);
     
-    setSelectedModel(model);
-    setSelectedYear(''); // Reset year when model changes
-    setAvailableYears([]); // Clear previous years
-    
-    if (!model || !selectedMake) {
-      console.log('📝 [VehicleSearchForm] Model cleared or no make selected, resetting years');
+    if (!modelValue || !selectedMake) {
+      console.log('   - Model cleared or no make selected');
       return;
     }
     
-    // Load years for the selected make+model
-    console.log(`📞 [VehicleSearchForm] Loading years for ${selectedMake} ${model}...`);
     setLoadingYears(true);
-    
     try {
-      const years = await getYearsForMakeModel(selectedMake, model);
-      console.log(`✅ [VehicleSearchForm] Found ${years.length} years for ${selectedMake} ${model}`);
+      console.log('📞 [VehicleSearchForm] Loading years for:', selectedMake, modelValue);
+      const aspects = await getVehicleAspects(selectedMake, modelValue); // Filter by make+model
       
-      if (years.length > 0) {
-        console.log('📊 [VehicleSearchForm] Sample years for this make+model:', 
-          years.slice(0, 5).map(y => `${y.displayName} (${y.count})`)
-        );
-      }
-      
-      setAvailableYears(years);
+      console.log('✅ [VehicleSearchForm] Years loaded:', selectedMake, modelValue, aspects.years.length);
+      setAvailableYears(aspects.years || []);
     } catch (error) {
-      console.error(`❌ [VehicleSearchForm] Error loading years for ${selectedMake} ${model}:`, error);
-      toast.error(`Failed to load years for ${selectedMake} ${model}. Please try again.`);
+      console.error('❌ [VehicleSearchForm] Error loading years:', selectedMake, modelValue, error);
+      toast.error(`Failed to load years for ${selectedMake} ${modelValue}`);
     } finally {
       setLoadingYears(false);
     }
+  };
+
+  const handleYearChange = (yearValue: string) => {
+    console.log('🔄 [VehicleSearchForm] Year changed:', yearValue);
+    setSelectedYear(yearValue);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -321,15 +254,6 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           <h2 className="text-xl font-semibold flex-1">
             {mode === 'buy' ? 'Find Cars & Trucks to Buy' : 'Price Your Vehicle to Sell'}
           </h2>
-          <button
-            type="button"
-            onClick={handleRefreshAspects}
-            disabled={refreshingAspects || loadingAspects}
-            className={`flex items-center ${mode === 'buy' ? 'text-blue-200 hover:text-white' : 'text-green-200 hover:text-white'} transition-colors disabled:opacity-50`}
-            title="Refresh vehicle data from eBay Browse API"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshingAspects ? 'animate-spin' : ''}`} />
-          </button>
         </div>
       </div>
 
@@ -354,41 +278,6 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           </div>
         </div>
 
-        {(loadingAspects || refreshingAspects) && (
-          <div className={`mb-6 p-4 ${mode === 'buy' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'} border rounded-lg`}>
-            <div className="flex items-center">
-              <Loader2 className={`h-5 w-5 animate-spin ${mode === 'buy' ? 'text-blue-600' : 'text-green-600'} mr-2`} />
-              <span className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'}`}>
-                {refreshingAspects ? 'Refreshing real-time vehicle data from eBay Browse API...' : 'Loading real-time vehicle options from eBay Browse API...'}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* No Data Available Notice */}
-        {!loadingAspects && !refreshingAspects && availableMakes.length === 0 && (
-          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <RefreshCw className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
-                <div>
-                  <p className="text-yellow-800 dark:text-yellow-200 font-medium">Vehicle data unavailable</p>
-                  <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                    eBay's vehicle data is currently unavailable. You can still search manually or try refreshing.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleRefreshAspects}
-                className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded-md transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Vehicle Selection */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           {/* Make */}
@@ -400,13 +289,13 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <select
                 value={selectedMake}
                 onChange={(e) => handleMakeChange(e.target.value)}
-                disabled={loadingAspects || refreshingAspects}
+                disabled={loadingAspects}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Make</option>
                 {availableMakes.map((make) => (
-                  <option key={make.value} value={make.value}>
-                    {make.displayName} ({make.count.toLocaleString()})
+                  <option key={make.name} value={make.name}>
+                    {make.name} ({make.count.toLocaleString()})
                   </option>
                 ))}
               </select>
@@ -429,15 +318,15 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <select
                 value={selectedModel}
                 onChange={(e) => handleModelChange(e.target.value)}
-                disabled={loadingAspects || refreshingAspects || !selectedMake || loadingModels}
+                disabled={loadingAspects || !selectedMake || loadingModels}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">
                   {!selectedMake ? 'Select a make first' : loadingModels ? 'Loading models...' : 'Any Model'}
                 </option>
                 {availableModels.map((model) => (
-                  <option key={`${model.value}-${model.make || 'generic'}`} value={model.value}>
-                    {model.displayName} ({model.count.toLocaleString()})
+                  <option key={model.name} value={model.name}>
+                    {model.name} ({model.count.toLocaleString()})
                   </option>
                 ))}
               </select>
@@ -469,8 +358,8 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
             <div className="relative">
               <select
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                disabled={loadingAspects || refreshingAspects || loadingYears || (!selectedMake && !selectedModel)}
+                onChange={(e) => handleYearChange(e.target.value)}
+                disabled={loadingAspects || loadingYears || (!selectedMake && !selectedModel)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">
@@ -478,8 +367,8 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
                    loadingYears ? 'Loading years...' : 'Any Year'}
                 </option>
                 {availableYears.map((year) => (
-                  <option key={year.value} value={year.value}>
-                    {year.displayName} ({year.count.toLocaleString()})
+                  <option key={year.name} value={year.name}>
+                    {year.name} ({year.count.toLocaleString()})
                   </option>
                 ))}
               </select>
@@ -629,7 +518,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           
           <Button
             type="submit"
-            disabled={isLoading || loadingAspects || refreshingAspects}
+            disabled={isLoading || loadingAspects}
             isLoading={isLoading}
             className={`px-8 py-3 ${mode === 'buy' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white font-semibold`}
             icon={<Search className="h-5 w-5" />}

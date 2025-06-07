@@ -1137,30 +1137,29 @@ export function getVehicleAspectOptions(): {
 }
 
 /**
- * Get available vehicle aspects (makes, models, years) for the Cars & Trucks category
- * Uses fieldgroups=ASPECT_REFINEMENTS to discover available options
+ * Get available vehicle aspects using Browse API ONLY with ASPECT_REFINEMENTS
+ * Uses EXACT format: category_ids=6001&aspect_filter=Make:{Toyota}|Model:{Camry}|Year:{2018}
  */
-export async function getAvailableVehicleAspects(
-  query: string = '',
+export async function getVehicleAspects(
   make?: string,
   model?: string
 ): Promise<{
-  makes: Array<{ name: string; value: string; refinementCount: number }>;
-  models: Array<{ name: string; value: string; refinementCount: number }>;
-  years: Array<{ name: string; value: string; refinementCount: number }>;
+  makes: Array<{ name: string; count: number }>;
+  models: Array<{ name: string; count: number }>;
+  years: Array<{ name: string; count: number }>;
 }> {
-  const requestKey = createRequestKey('getAvailableVehicleAspects', { query, make, model });
+  const requestKey = createRequestKey('getVehicleAspects', { make, model });
   
   return makeThrottledRequest(requestKey, async () => {
     try {
-      console.log('🔍 Getting available vehicle aspects for refinement:', { query, make, model });
+      console.log('🔍 Getting vehicle aspects via Browse API:', { make, model });
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.access_token) {
         throw new Error('Authentication required. Please sign in.');
       }
 
-      // Build aspect filter for narrowing down results
+      // Build aspect filter using PIPE format you specified
       const aspectParts: string[] = [];
       if (make) aspectParts.push(`Make:{${make}}`);
       if (model) aspectParts.push(`Model:{${model}}`);
@@ -1171,7 +1170,7 @@ export async function getAvailableVehicleAspects(
       
       // Add aspect filter if we have make/model to narrow results
       if (aspectParts.length > 0) {
-        filters.aspectFilter = aspectParts.join('|');
+        filters.aspectFilter = aspectParts.join('|'); // Use PIPE separator
       }
 
       const headers: Record<string, string> = {
@@ -1182,23 +1181,23 @@ export async function getAvailableVehicleAspects(
 
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`;
       
-      console.log('🌐 Making vehicle aspects request');
+      console.log('🌐 Browse API vehicle aspects request');
       console.log('📦 Request payload:', {
-        query: query || 'vehicle',
+        query: 'vehicle',
         filters,
-        pageSize: 1, // We only need refinements, not actual items
+        pageSize: 1, // Minimal items, we want the refinements
         pageOffset: 0,
         mode: 'live',
-        fieldgroups: ['ASPECT_REFINEMENTS'] // Key fieldgroup for getting available aspects
+        fieldgroups: ['ASPECT_REFINEMENTS'] // Get refinements only
       });
 
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          query: query || 'vehicle',
+          query: 'vehicle',
           filters,
-          pageSize: 1, // Minimal items, we want the refinements
+          pageSize: 1,
           pageOffset: 0,
           mode: 'live',
           fieldgroups: ['ASPECT_REFINEMENTS']
@@ -1209,37 +1208,19 @@ export async function getAvailableVehicleAspects(
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Response not ok. Error text:', errorText);
-        
-        try {
-          const errorData = JSON.parse(errorText);
-          console.error('❌ Parsed error data:', errorData);
-          
-          if (response.status === 401) {
-            throw new Error('Authentication failed. Please sign in again.');
-          }
-          
-          throw new Error(errorData.error || 'Failed to get vehicle aspects');
-        } catch (parseError) {
-          console.error('❌ Could not parse error response:', parseError);
-          
-          if (response.status === 401) {
-            throw new Error('Authentication failed. Please sign in again.');
-          }
-          
-          throw new Error(`eBay API error: ${response.status} - ${errorText}`);
-        }
+        console.error('❌ Browse API error:', errorText);
+        throw new Error(`Browse API error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('✅ Vehicle Aspects Response received:', data);
+      console.log('✅ Browse API refinements received:', data);
       
       // Extract aspect refinements from the response
       const refinements = data.refinement?.aspectDistributions || [];
       
-      const makes: Array<{ name: string; value: string; refinementCount: number }> = [];
-      const models: Array<{ name: string; value: string; refinementCount: number }> = [];
-      const years: Array<{ name: string; value: string; refinementCount: number }> = [];
+      const makes: Array<{ name: string; count: number }> = [];
+      const models: Array<{ name: string; count: number }> = [];
+      const years: Array<{ name: string; count: number }> = [];
       
       // Process refinements to extract makes, models, and years
       refinements.forEach((aspect: any) => {
@@ -1247,33 +1228,30 @@ export async function getAvailableVehicleAspects(
           aspect.aspectValueDistributions?.forEach((value: any) => {
             makes.push({
               name: value.localizedAspectValue,
-              value: value.localizedAspectValue,
-              refinementCount: value.matchCount || 0
+              count: value.matchCount || 0
             });
           });
         } else if (aspect.localizedAspectName === 'Model') {
           aspect.aspectValueDistributions?.forEach((value: any) => {
             models.push({
               name: value.localizedAspectValue,
-              value: value.localizedAspectValue,
-              refinementCount: value.matchCount || 0
+              count: value.matchCount || 0
             });
           });
         } else if (aspect.localizedAspectName === 'Year') {
           aspect.aspectValueDistributions?.forEach((value: any) => {
             years.push({
               name: value.localizedAspectValue,
-              value: value.localizedAspectValue,
-              refinementCount: value.matchCount || 0
+              count: value.matchCount || 0
             });
           });
         }
       });
       
-      // Sort by refinement count (most popular first)
-      makes.sort((a, b) => b.refinementCount - a.refinementCount);
-      models.sort((a, b) => b.refinementCount - a.refinementCount);
-      years.sort((a, b) => parseInt(b.value) - parseInt(a.value)); // Years sorted newest first
+      // Sort by count (most popular first)
+      makes.sort((a, b) => b.count - a.count);
+      models.sort((a, b) => b.count - a.count);
+      years.sort((a, b) => parseInt(b.name) - parseInt(a.name)); // Years newest first
       
       console.log('📊 Processed vehicle aspects:');
       console.log('  - Makes found:', makes.length);
@@ -1282,7 +1260,7 @@ export async function getAvailableVehicleAspects(
       
       return { makes, models, years };
     } catch (error) {
-      console.error('💥 Error in getAvailableVehicleAspects:', error);
+      console.error('💥 Error in getVehicleAspects:', error);
       throw error;
     }
   });
