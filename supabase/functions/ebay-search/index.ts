@@ -418,12 +418,11 @@ Deno.serve(async (req) => {
       mode = 'live',
       pageSize = 50,
       pageOffset = 0,
-      vehicleAspects = {},
       filters = {}
     } = body;
 
-    // Extract nested vehicle aspects (handle both top-level and nested in filters)
-    const vehicleData = vehicleAspects || filters.vehicleAspects || {};
+    // Extract nested vehicle aspects from filters
+    const vehicleData = filters.vehicleAspects || {};
     const { make, model, year, yearFrom, yearTo } = vehicleData;
 
     // Extract other filters
@@ -449,7 +448,7 @@ Deno.serve(async (req) => {
 
     // 🔍 DETAILED DEBUGGING FOR VEHICLE DATA EXTRACTION
     console.log('🔍 [DEBUG] Raw body structure:', JSON.stringify(body, null, 2));
-    console.log('🔍 [DEBUG] Top-level vehicleAspects:', vehicleAspects);
+    console.log('🔍 [DEBUG] Top-level vehicleAspects:', vehicleData);
     console.log('🔍 [DEBUG] filters.vehicleAspects:', filters.vehicleAspects);
     console.log('🔍 [DEBUG] Final vehicleData:', vehicleData);
     console.log('🔍 [DEBUG] Extracted make:', make);
