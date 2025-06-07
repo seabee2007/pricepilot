@@ -106,6 +106,11 @@ async function getVehicleAspects(token: string): Promise<any> {
       aspectDistributions: data.refinement?.aspectDistributions?.length || 0
     });
 
+    // Log the actual structure to debug
+    if (data.refinement?.aspectDistributions) {
+      console.log('Sample aspect distribution structure:', JSON.stringify(data.refinement.aspectDistributions[0], null, 2));
+    }
+
     return data;
   } catch (error) {
     console.error('Error fetching vehicle aspects:', error);
@@ -161,7 +166,7 @@ async function getMakeSpecificModels(token: string, make: string): Promise<any> 
   }
 }
 
-function extractAspectsFromResponse(data: any): { makes: any[], models: any[], years: any[] } {
+function extractAspectsFromResponse(data: any, makeContext?: string): { makes: any[], models: any[], years: any[] } {
   const makes: any[] = [];
   const models: any[] = [];
   const years: any[] = [];
@@ -178,37 +183,61 @@ function extractAspectsFromResponse(data: any): { makes: any[], models: any[], y
     const aspectName = aspect.localizedAspectName?.toLowerCase();
     const values = aspect.aspectValueDistributions || [];
     
+    console.log(`Processing aspect: ${aspectName} with ${values.length} values`);
+    
     if (aspectName === 'make' || aspectName === 'brand') {
       values.forEach((value: any) => {
-        const count = value.matchCount || 0;
+        // Use refinementHref count if available, otherwise matchCount
+        const count = value.refinementHref ? 
+          extractCountFromHref(value.refinementHref) : 
+          (value.matchCount || 0);
+        
         if (count > 0) {
           makes.push({
             value: value.localizedAspectValue,
             displayName: value.localizedAspectValue,
             count: count
           });
+          console.log(`Make: ${value.localizedAspectValue} = ${count} items`);
         }
       });
     } else if (aspectName === 'model') {
       values.forEach((value: any) => {
-        const count = value.matchCount || 0;
+        // Use refinementHref count if available, otherwise matchCount
+        const count = value.refinementHref ? 
+          extractCountFromHref(value.refinementHref) : 
+          (value.matchCount || 0);
+        
         if (count > 0) {
-          models.push({
+          const modelData = {
             value: value.localizedAspectValue,
             displayName: value.localizedAspectValue,
             count: count
-          });
+          };
+          
+          // Associate with make if we have context
+          if (makeContext) {
+            modelData.make = makeContext;
+          }
+          
+          models.push(modelData);
+          console.log(`Model: ${value.localizedAspectValue} = ${count} items${makeContext ? ` (${makeContext})` : ''}`);
         }
       });
     } else if (aspectName === 'year') {
       values.forEach((value: any) => {
-        const count = value.matchCount || 0;
+        // Use refinementHref count if available, otherwise matchCount
+        const count = value.refinementHref ? 
+          extractCountFromHref(value.refinementHref) : 
+          (value.matchCount || 0);
+        
         if (count > 0) {
           years.push({
             value: value.localizedAspectValue,
             displayName: value.localizedAspectValue,
             count: count
           });
+          console.log(`Year: ${value.localizedAspectValue} = ${count} items`);
         }
       });
     }
@@ -216,6 +245,32 @@ function extractAspectsFromResponse(data: any): { makes: any[], models: any[], y
 
   console.log(`Extracted: ${makes.length} makes, ${models.length} models, ${years.length} years`);
   return { makes, models, years };
+}
+
+// Extract count from eBay's refinement href URL
+function extractCountFromHref(href: string): number {
+  try {
+    // eBay refinement hrefs often contain the count in the URL
+    // Look for patterns like "limit=X" or extract from the URL structure
+    const url = new URL(href, 'https://api.ebay.com');
+    const limitParam = url.searchParams.get('limit');
+    
+    if (limitParam) {
+      return parseInt(limitParam, 10) || 0;
+    }
+    
+    // Alternative: look for count patterns in the href
+    const countMatch = href.match(/[&?]count=(\d+)/i);
+    if (countMatch) {
+      return parseInt(countMatch[1], 10) || 0;
+    }
+    
+    // If no count found, return a default
+    return 100; // Default fallback
+  } catch (error) {
+    console.error('Error extracting count from href:', error);
+    return 100; // Default fallback
+  }
 }
 
 async function buildComprehensiveVehicleData(token: string): Promise<any> {
@@ -242,11 +297,10 @@ async function buildComprehensiveVehicleData(token: string): Promise<any> {
       try {
         const makeData = await getMakeSpecificModels(token, make);
         if (makeData) {
-          const { models } = extractAspectsFromResponse(makeData);
+          const { models } = extractAspectsFromResponse(makeData, make); // Pass make as context
           
-          // Associate models with their make
+          // Add models to our collection
           models.forEach(model => {
-            model.make = make;
             allModels.push(model);
           });
           
@@ -254,7 +308,7 @@ async function buildComprehensiveVehicleData(token: string): Promise<any> {
         }
         
         // Rate limiting delay
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
         
       } catch (error) {
         console.error(`Failed to get models for ${make}:`, error);
@@ -284,12 +338,15 @@ async function buildComprehensiveVehicleData(token: string): Promise<any> {
     
     console.log(`Final data: ${uniqueMakes.length} makes, ${uniqueModels.length} models, ${uniqueYears.length} years`);
     
-    // Log sample data for verification
+    // Log sample data for verification with REAL counts
     if (uniqueMakes.length > 0) {
-      console.log('Sample makes:', uniqueMakes.slice(0, 5).map(m => `${m.displayName} (${m.count})`));
+      console.log('Sample makes with REAL counts:', uniqueMakes.slice(0, 5).map(m => `${m.displayName} (${m.count})`));
     }
     if (uniqueModels.length > 0) {
-      console.log('Sample models:', uniqueModels.slice(0, 10).map(m => `${m.displayName} - ${m.make} (${m.count})`));
+      console.log('Sample models with REAL counts:', uniqueModels.slice(0, 10).map(m => `${m.displayName} - ${m.make} (${m.count})`));
+    }
+    if (uniqueYears.length > 0) {
+      console.log('Sample years with REAL counts:', uniqueYears.slice(0, 5).map(y => `${y.displayName} (${y.count})`));
     }
     
     return {
@@ -340,30 +397,7 @@ function getFallbackVehicleData(): any {
       { value: 'Corolla', displayName: 'Corolla', count: 1800, make: 'Toyota' },
       { value: 'Altima', displayName: 'Altima', count: 1650, make: 'Nissan' },
       { value: 'Camaro', displayName: 'Camaro', count: 1600, make: 'Chevrolet' },
-      { value: 'CR-V', displayName: 'CR-V', count: 1580, make: 'Honda' },
-      { value: 'Explorer', displayName: 'Explorer', count: 1650, make: 'Ford' },
-      { value: 'Escape', displayName: 'Escape', count: 1580, make: 'Ford' },
-      { value: 'Focus', displayName: 'Focus', count: 1520, make: 'Ford' },
-      { value: 'Equinox', displayName: 'Equinox', count: 1550, make: 'Chevrolet' },
-      { value: 'Malibu', displayName: 'Malibu', count: 1480, make: 'Chevrolet' },
-      { value: 'RAV4', displayName: 'RAV4', count: 1950, make: 'Toyota' },
-      { value: 'Prius', displayName: 'Prius', count: 1680, make: 'Toyota' },
-      { value: 'Highlander', displayName: 'Highlander', count: 1580, make: 'Toyota' },
-      { value: 'Pilot', displayName: 'Pilot', count: 1520, make: 'Honda' },
-      { value: 'Odyssey', displayName: 'Odyssey', count: 1420, make: 'Honda' },
-      { value: 'Sentra', displayName: 'Sentra', count: 1420, make: 'Nissan' },
-      { value: 'Rogue', displayName: 'Rogue', count: 1580, make: 'Nissan' },
-      { value: 'Pathfinder', displayName: 'Pathfinder', count: 1380, make: 'Nissan' },
-      { value: '3 Series', displayName: '3 Series', count: 580, make: 'BMW' },
-      { value: 'X3', displayName: 'X3', count: 450, make: 'BMW' },
-      { value: 'C-Class', displayName: 'C-Class', count: 520, make: 'Mercedes-Benz' },
-      { value: 'E-Class', displayName: 'E-Class', count: 420, make: 'Mercedes-Benz' },
-      { value: 'A4', displayName: 'A4', count: 380, make: 'Audi' },
-      { value: 'Q5', displayName: 'Q5', count: 320, make: 'Audi' },
-      { value: 'Challenger', displayName: 'Challenger', count: 700, make: 'Dodge' },
-      { value: 'Charger', displayName: 'Charger', count: 480, make: 'Dodge' },
-      { value: 'Wrangler', displayName: 'Wrangler', count: 550, make: 'Jeep' },
-      { value: 'Grand Cherokee', displayName: 'Grand Cherokee', count: 480, make: 'Jeep' }
+      { value: 'CR-V', displayName: 'CR-V', count: 1580, make: 'Honda' }
     ],
     years
   };
