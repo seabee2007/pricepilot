@@ -295,7 +295,7 @@ function extractAspectsFromBrowseResponse(data: any, makeContext?: string): { ma
         const count = extractRealInventoryCount(value, data.total, 'model');
         
         if (count > 0) {
-          const modelData = {
+          const modelData: any = {
             value: value.localizedAspectValue,
             displayName: value.localizedAspectValue,
             count: count
@@ -433,59 +433,6 @@ async function buildRealVehicleInventoryData(token: string): Promise<any> {
   }
 }
 
-function getFallbackVehicleData(): any {
-  console.log('⚠️ Using fallback vehicle data - API extraction failed');
-  
-  const currentYear = new Date().getFullYear();
-  const years: any[] = [];
-  
-  for (let year = currentYear; year >= 1990; year--) {
-    // More recent years have more inventory
-    const ageMultiplier = Math.max(0.3, 1 - (currentYear - year) * 0.025);
-    const baseCount = Math.floor(Math.random() * 1200 + 400);
-    const count = Math.floor(baseCount * ageMultiplier);
-    
-    years.push({
-      value: year.toString(),
-      displayName: year.toString(),
-      count: Math.max(100, count)
-    });
-  }
-
-  return {
-    makes: [
-      { value: 'Ford', displayName: 'Ford', count: 28420 },
-      { value: 'Chevrolet', displayName: 'Chevrolet', count: 25850 },
-      { value: 'Toyota', displayName: 'Toyota', count: 23200 },
-      { value: 'Honda', displayName: 'Honda', count: 21800 },
-      { value: 'Nissan', displayName: 'Nissan', count: 19500 },
-      { value: 'BMW', displayName: 'BMW', count: 18200 },
-      { value: 'Mercedes-Benz', displayName: 'Mercedes-Benz', count: 17800 },
-      { value: 'Audi', displayName: 'Audi', count: 16900 },
-      { value: 'Dodge', displayName: 'Dodge', count: 16600 },
-      { value: 'Jeep', displayName: 'Jeep', count: 16200 }
-    ],
-    models: [
-      { value: 'F-150', displayName: 'F-150', count: 4200, make: 'Ford' },
-      { value: 'Silverado', displayName: 'Silverado', count: 3800, make: 'Chevrolet' },
-      { value: 'Camry', displayName: 'Camry', count: 3200, make: 'Toyota' },
-      { value: 'Accord', displayName: 'Accord', count: 2900, make: 'Honda' },
-      { value: 'Civic', displayName: 'Civic', count: 2700, make: 'Honda' },
-      { value: 'Mustang', displayName: 'Mustang', count: 2200, make: 'Ford' },
-      { value: 'Corolla', displayName: 'Corolla', count: 2100, make: 'Toyota' },
-      { value: 'Altima', displayName: 'Altima', count: 1950, make: 'Nissan' },
-      { value: 'Camaro', displayName: 'Camaro', count: 1800, make: 'Chevrolet' },
-      { value: 'CR-V', displayName: 'CR-V', count: 1780, make: 'Honda' },
-      { value: 'Challenger', displayName: 'Challenger', count: 1650, make: 'Dodge' },
-      { value: 'Charger', displayName: 'Charger', count: 1580, make: 'Dodge' },
-      { value: 'Durango', displayName: 'Durango', count: 1420, make: 'Dodge' },
-      { value: 'Journey', displayName: 'Journey', count: 1280, make: 'Dodge' },
-      { value: 'Grand Caravan', displayName: 'Grand Caravan', count: 1150, make: 'Dodge' }
-    ],
-    years
-  };
-}
-
 Deno.serve(async (req) => {
   // Handle CORS preflight requests FIRST
   if (req.method === 'OPTIONS') {
@@ -528,22 +475,15 @@ Deno.serve(async (req) => {
     console.log('✅ User authenticated:', user.id);
 
     // Get OAuth token and fetch REAL vehicle inventory data
-    let vehicleData;
-    try {
-      console.log('🔑 Getting OAuth token via Client Credentials flow...');
-      const token = await getOAuthToken();
-      console.log('📊 Building vehicle data with REAL inventory counts from eBay Browse API...');
-      vehicleData = await buildRealVehicleInventoryData(token);
-      console.log('🎉 Successfully built vehicle data with REAL eBay inventory counts!');
-    } catch (error) {
-      console.error('❌ Error building real vehicle data, using fallback:', error);
-      vehicleData = getFallbackVehicleData();
-    }
+    console.log('🔑 Getting OAuth token via Client Credentials flow...');
+    const token = await getOAuthToken();
+    console.log('📊 Building vehicle data with REAL inventory counts from eBay Browse API...');
+    const vehicleData = await buildRealVehicleInventoryData(token);
+    console.log('🎉 Successfully built vehicle data with REAL eBay inventory counts!');
 
     // Ensure we have valid data
     if (!vehicleData.makes || vehicleData.makes.length === 0) {
-      console.log('⚠️ No makes found, using fallback');
-      vehicleData = getFallbackVehicleData();
+      throw new Error('No vehicle data found from eBay API');
     }
 
     console.log(`✅ Returning: ${vehicleData.makes.length} makes, ${vehicleData.models.length} models, ${vehicleData.years.length} years`);
@@ -562,13 +502,10 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('❌ Vehicle API error:', error);
     
-    // Always return fallback to ensure UI works
-    const fallbackData = getFallbackVehicleData();
-    
     return new Response(
-      JSON.stringify(fallbackData),
+      JSON.stringify({ error: 'Failed to fetch vehicle data from eBay API', details: error.message }),
       { 
-        status: 200,
+        status: 500,
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 
