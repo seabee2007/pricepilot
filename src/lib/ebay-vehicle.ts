@@ -33,7 +33,7 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
       throw new Error('Authentication required');
     }
 
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-vehicles`, {
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-vehicle-aspects`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -7,25 +7,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// OAuth token cache
-let tokenCache: {
-  access_token: string;
-  expires_at: number;
-} | null = null;
-
 async function getOAuthToken(): Promise<string> {
-  // Check for cached valid token
-  if (tokenCache && tokenCache.expires_at > Date.now()) {
-    console.log('Using cached OAuth token');
-    return tokenCache.access_token;
+  // Use the OAuth app token directly if available
+  const oauthToken = Deno.env.get('EBAY_OAUTH_TOKEN');
+  
+  if (oauthToken) {
+    console.log('Using OAuth application token');
+    return oauthToken;
   }
 
+  // Fallback to client credentials flow if no OAuth token
   const clientId = Deno.env.get('EBAY_CLIENT_ID');
   const clientSecret = Deno.env.get('EBAY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    console.error('Missing eBay credentials');
-    throw new Error('eBay API credentials not configured');
+    throw new Error('Missing eBay API credentials (EBAY_OAUTH_TOKEN or EBAY_CLIENT_ID/EBAY_CLIENT_SECRET)');
   }
 
   const credentials = btoa(`${clientId}:${clientSecret}`);
@@ -54,12 +50,6 @@ async function getOAuthToken(): Promise<string> {
     }
 
     const data = await response.json();
-    
-    tokenCache = {
-      access_token: data.access_token,
-      expires_at: Date.now() + (data.expires_in * 1000 * 0.9), // 90% of expiry for safety
-    };
-
     console.log('OAuth token obtained successfully');
     return data.access_token;
   } catch (error) {
@@ -69,14 +59,10 @@ async function getOAuthToken(): Promise<string> {
 }
 
 async function getVehicleAspects(token: string): Promise<any> {
-  const clientId = Deno.env.get('EBAY_CLIENT_ID');
-  const isProduction = !clientId?.includes('SBX');
-  
-  const baseUrl = isProduction 
-    ? 'https://api.ebay.com/buy/browse/v1/item_summary/search'
-    : 'https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search';
+  // Always use production API for OAuth app tokens
+  const baseUrl = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
 
-  console.log(`Fetching vehicle aspects from ${isProduction ? 'PRODUCTION' : 'SANDBOX'} Browse API`);
+  console.log('Fetching vehicle aspects from PRODUCTION Browse API');
 
   // Build the proper Browse API request
   const url = new URL(baseUrl);
@@ -128,12 +114,7 @@ async function getVehicleAspects(token: string): Promise<any> {
 }
 
 async function getMakeSpecificModels(token: string, make: string): Promise<any> {
-  const clientId = Deno.env.get('EBAY_CLIENT_ID');
-  const isProduction = !clientId?.includes('SBX');
-  
-  const baseUrl = isProduction 
-    ? 'https://api.ebay.com/buy/browse/v1/item_summary/search'
-    : 'https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search';
+  const baseUrl = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
 
   const url = new URL(baseUrl);
   url.searchParams.append('category_ids', '6001');
@@ -250,7 +231,7 @@ async function buildComprehensiveVehicleData(token: string): Promise<any> {
     // Step 2: Get make-specific models for top makes
     const topMakes = allMakes
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10) // Reduced to 10 makes to avoid timeout
+      .slice(0, 8) // Reduced to 8 makes to avoid timeout
       .map(make => make.value);
     
     console.log('Step 2: Getting models for top makes:', topMakes);
@@ -273,7 +254,7 @@ async function buildComprehensiveVehicleData(token: string): Promise<any> {
         }
         
         // Rate limiting delay
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50));
         
       } catch (error) {
         console.error(`Failed to get models for ${make}:`, error);
@@ -398,7 +379,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log(`Received ${req.method} request to ebay-vehicles function`);
+    console.log(`Received ${req.method} request to ebay-vehicle-aspects function`);
 
     // Initialize Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
