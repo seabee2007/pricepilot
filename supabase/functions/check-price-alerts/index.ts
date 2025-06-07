@@ -203,9 +203,15 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
                 
                 <p>This is a great time to check out the latest listings and potentially make a purchase!</p>
                 
-                <a href="https://pricepilot.online/results?q=${encodeURIComponent(query)}&mode=buy" class="button">
-                  View Current Listings →
+                <a href="https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=15" class="button">
+                  View eBay Listings Now →
                 </a>
+                
+                <p style="margin-top: 20px; text-align: center;">
+                  <a href="https://pricepilot.online/results?q=${encodeURIComponent(query)}&mode=buy" style="color: #3b82f6; text-decoration: none; font-size: 14px;">
+                    📊 Track more prices on PricePilot
+                  </a>
+                </p>
               </div>
               
               <div class="alert-card">
