@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, Search, ChevronDown, Loader2, ArrowLeft } from 'lucide-react';
+import { Car, Search, ChevronDown, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
 import { SearchFilters, SearchMode } from '../types';
-import { getVehicleAspects, VehicleAspects } from '../lib/ebay-vehicle';
+import { getVehicleAspects, VehicleAspects, refreshVehicleAspects } from '../lib/ebay-vehicle';
 import toast from 'react-hot-toast';
 
 interface VehicleSearchFormProps {
@@ -17,6 +17,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingAspects, setLoadingAspects] = useState(false);
+  const [refreshingAspects, setRefreshingAspects] = useState(false);
   
   // Vehicle selection state
   const [selectedMake, setSelectedMake] = useState('');
@@ -42,11 +43,22 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     const loadAspects = async () => {
       setLoadingAspects(true);
       try {
+        console.log('Loading vehicle aspects...');
         const aspects = await getVehicleAspects();
+        console.log('Vehicle aspects loaded:', {
+          makes: aspects.makes.length,
+          models: aspects.models.length,
+          years: aspects.years.length
+        });
         setVehicleAspects(aspects);
+        
+        // Show success message if we got good data
+        if (aspects.makes.length > 0) {
+          toast.success(`Loaded ${aspects.makes.length} makes, ${aspects.models.length} models, ${aspects.years.length} years`);
+        }
       } catch (error) {
         console.error('Error loading vehicle aspects:', error);
-        toast.error('Failed to load vehicle options');
+        toast.error('Failed to load vehicle options. Using fallback data.');
       } finally {
         setLoadingAspects(false);
       }
@@ -55,12 +67,28 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     loadAspects();
   }, []);
 
+  // Handle refresh of vehicle aspects
+  const handleRefreshAspects = async () => {
+    setRefreshingAspects(true);
+    try {
+      console.log('Refreshing vehicle aspects...');
+      const aspects = await refreshVehicleAspects();
+      setVehicleAspects(aspects);
+      toast.success('Vehicle data refreshed successfully!');
+    } catch (error) {
+      console.error('Error refreshing vehicle aspects:', error);
+      toast.error('Failed to refresh vehicle data');
+    } finally {
+      setRefreshingAspects(false);
+    }
+  };
+
   // Filter models based on selected make
   const availableModels = selectedMake 
     ? vehicleAspects.models.filter(model => 
         model.make === selectedMake || !model.make // Include generic models
       )
-    : [];
+    : vehicleAspects.models;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,30 +182,45 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           <h2 className="text-xl font-semibold flex-1">
             {mode === 'buy' ? 'Find Cars & Trucks to Buy' : 'Price Your Vehicle to Sell'}
           </h2>
-          <div className="w-32"></div> {/* Spacer for centering */}
+          <button
+            type="button"
+            onClick={handleRefreshAspects}
+            disabled={refreshingAspects || loadingAspects}
+            className={`flex items-center ${mode === 'buy' ? 'text-blue-200 hover:text-white' : 'text-green-200 hover:text-white'} transition-colors disabled:opacity-50`}
+            title="Refresh vehicle data"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshingAspects ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-b-lg shadow-md p-6">
         {/* Vehicle Search Description */}
         <div className={`mb-6 p-4 ${mode === 'buy' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'} border rounded-lg`}>
-          <div className="flex items-center">
-            <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
-            <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
-              {mode === 'buy' 
-                ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Use the filters below to find specific makes, models, and years.'
-                : 'Find completed sales of similar vehicles to help price your car or truck for sale.'
-              }
-            </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
+              <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
+                {mode === 'buy' 
+                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Use the filters below to find specific makes, models, and years.'
+                  : 'Find completed sales of similar vehicles to help price your car or truck for sale.'
+                }
+              </p>
+            </div>
+            {vehicleAspects.makes.length > 0 && (
+              <div className={`text-xs ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}>
+                {vehicleAspects.makes.length} makes • {vehicleAspects.models.length} models • {vehicleAspects.years.length} years
+              </div>
+            )}
           </div>
         </div>
 
-        {loadingAspects && (
+        {(loadingAspects || refreshingAspects) && (
           <div className={`mb-6 p-4 ${mode === 'buy' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'} border rounded-lg`}>
             <div className="flex items-center">
               <Loader2 className={`h-5 w-5 animate-spin ${mode === 'buy' ? 'text-blue-600' : 'text-green-600'} mr-2`} />
               <span className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'}`}>
-                Loading vehicle options...
+                {refreshingAspects ? 'Refreshing vehicle data from eBay...' : 'Loading vehicle options from eBay...'}
               </span>
             </div>
           </div>
@@ -197,13 +240,13 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
                   setSelectedMake(e.target.value);
                   setSelectedModel(''); // Reset model when make changes
                 }}
-                disabled={loadingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none"
+                disabled={loadingAspects || refreshingAspects}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Make</option>
                 {vehicleAspects.makes.map((make) => (
                   <option key={make.value} value={make.value}>
-                    {make.displayName} ({make.count})
+                    {make.displayName} ({make.count.toLocaleString()})
                   </option>
                 ))}
               </select>
@@ -220,18 +263,21 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={loadingAspects || !selectedMake}
+                disabled={loadingAspects || refreshingAspects || (!selectedMake && availableModels.length === 0)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Model</option>
                 {availableModels.map((model) => (
                   <option key={model.value} value={model.value}>
-                    {model.displayName} ({model.count})
+                    {model.displayName} ({model.count.toLocaleString()})
                   </option>
                 ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
             </div>
+            {selectedMake && availableModels.length === 0 && (
+              <p className="mt-1 text-xs text-gray-500">No models available for {selectedMake}</p>
+            )}
           </div>
 
           {/* Year */}
@@ -243,13 +289,13 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                disabled={loadingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none"
+                disabled={loadingAspects || refreshingAspects}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Year</option>
                 {vehicleAspects.years.map((year) => (
                   <option key={year.value} value={year.value}>
-                    {year.displayName} ({year.count})
+                    {year.displayName} ({year.count.toLocaleString()})
                   </option>
                 ))}
               </select>
@@ -261,7 +307,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
         {/* Year Range (Alternative to single year) */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Year Range (Optional)
+            Year Range (Optional - alternative to single year)
           </label>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -389,7 +435,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           
           <Button
             type="submit"
-            disabled={isLoading || loadingAspects}
+            disabled={isLoading || loadingAspects || refreshingAspects}
             isLoading={isLoading}
             className={`px-8 py-3 ${mode === 'buy' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white font-semibold`}
             icon={<Search className="h-5 w-5" />}
