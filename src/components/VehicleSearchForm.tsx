@@ -4,7 +4,7 @@ import { Car, Search, ChevronDown, Loader2, ArrowLeft, RefreshCw } from 'lucide-
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
 import { SearchFilters, SearchMode } from '../types';
-import { getVehicleAspects, VehicleAspects, refreshVehicleAspects } from '../lib/ebay-vehicle';
+import { getVehicleAspects, VehicleAspects, refreshVehicleAspects, getModelsForMake } from '../lib/ebay-vehicle';
 import toast from 'react-hot-toast';
 
 interface VehicleSearchFormProps {
@@ -83,12 +83,21 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     }
   };
 
-  // Filter models based on selected make
-  const availableModels = selectedMake 
-    ? vehicleAspects.models.filter(model => 
-        model.make === selectedMake || !model.make // Include generic models
-      )
-    : vehicleAspects.models;
+  // Get available models based on selected make
+  const availableModels = getModelsForMake(vehicleAspects, selectedMake);
+
+  // Handle make selection change
+  const handleMakeChange = (make: string) => {
+    setSelectedMake(make);
+    setSelectedModel(''); // Reset model when make changes
+    
+    // Log available models for debugging
+    const models = getModelsForMake(vehicleAspects, make);
+    console.log(`Selected make: ${make}, Available models: ${models.length}`);
+    if (models.length > 0) {
+      console.log('Sample models:', models.slice(0, 5).map(m => m.displayName));
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -236,10 +245,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
             <div className="relative">
               <select
                 value={selectedMake}
-                onChange={(e) => {
-                  setSelectedMake(e.target.value);
-                  setSelectedModel(''); // Reset model when make changes
-                }}
+                onChange={(e) => handleMakeChange(e.target.value)}
                 disabled={loadingAspects || refreshingAspects}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
@@ -257,18 +263,18 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           {/* Model */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Model
+              Model {selectedMake && `(${availableModels.length} available)`}
             </label>
             <div className="relative">
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={loadingAspects || refreshingAspects || (!selectedMake && availableModels.length === 0)}
+                disabled={loadingAspects || refreshingAspects}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Model</option>
                 {availableModels.map((model) => (
-                  <option key={model.value} value={model.value}>
+                  <option key={`${model.value}-${model.make || 'generic'}`} value={model.value}>
                     {model.displayName} ({model.count.toLocaleString()})
                   </option>
                 ))}
@@ -276,7 +282,14 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
             </div>
             {selectedMake && availableModels.length === 0 && (
-              <p className="mt-1 text-xs text-gray-500">No models available for {selectedMake}</p>
+              <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+                No specific models found for {selectedMake}. Showing all models.
+              </p>
+            )}
+            {selectedMake && availableModels.length > 0 && (
+              <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                Showing {availableModels.length} models for {selectedMake}
+              </p>
             )}
           </div>
 
