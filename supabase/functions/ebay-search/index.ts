@@ -215,6 +215,45 @@ function buildFilterString(filters: any): string {
   return filterParts.join(',');
 }
 
+function buildAspectFilter(vehicleAspects: any): string {
+  if (!vehicleAspects) return '';
+  
+  const aspectParts: string[] = [];
+  
+  // Build aspect filters for vehicle search
+  if (vehicleAspects.make) {
+    aspectParts.push(`Make:${vehicleAspects.make}`);
+  }
+  
+  if (vehicleAspects.model) {
+    aspectParts.push(`Model:${vehicleAspects.model}`);
+  }
+  
+  if (vehicleAspects.year) {
+    aspectParts.push(`Year:${vehicleAspects.year}`);
+  } else if (vehicleAspects.yearFrom || vehicleAspects.yearTo) {
+    // Handle year range
+    if (vehicleAspects.yearFrom && vehicleAspects.yearTo) {
+      // Create range of years
+      const fromYear = parseInt(vehicleAspects.yearFrom);
+      const toYear = parseInt(vehicleAspects.yearTo);
+      const years = [];
+      for (let year = fromYear; year <= toYear; year++) {
+        years.push(year.toString());
+      }
+      if (years.length > 0) {
+        aspectParts.push(`Year:{${years.join('|')}}`);
+      }
+    } else if (vehicleAspects.yearFrom) {
+      aspectParts.push(`Year:${vehicleAspects.yearFrom}`);
+    } else if (vehicleAspects.yearTo) {
+      aspectParts.push(`Year:${vehicleAspects.yearTo}`);
+    }
+  }
+  
+  return aspectParts.length > 0 ? `categoryId:6001,${aspectParts.join(',')}` : '';
+}
+
 function buildCompatibilityFilter(compatibility: any): string {
   if (!compatibility) return '';
   
@@ -365,6 +404,7 @@ Deno.serve(async (req) => {
     const token = await getOAuthToken();
     const filterString = buildFilterString(filters);
     const compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
+    const aspectFilter = buildAspectFilter(filters.vehicleAspects);
     
     // Choose endpoint based on mode and environment (sandbox vs production)
     const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
@@ -400,6 +440,12 @@ Deno.serve(async (req) => {
     
     if (compatibilityFilter) {
       searchUrl.searchParams.append('compatibility_filter', compatibilityFilter);
+    }
+    
+    // Add aspect filter for vehicle searches
+    if (aspectFilter) {
+      searchUrl.searchParams.append('aspect_filter', aspectFilter);
+      console.log(`Applied aspect filter: ${aspectFilter}`);
     }
     
     if (filters.postalCode) {

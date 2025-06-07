@@ -69,6 +69,15 @@ export interface SearchFilters {
   
   // Automotive compatibility filters
   compatibilityFilter?: VehicleCompatibility;
+  
+  // Vehicle-specific aspects for Cars & Trucks category
+  vehicleAspects?: {
+    make?: string;
+    model?: string;
+    year?: string;
+    yearFrom?: string;
+    yearTo?: string;
+  };
 }
 
 export interface SavedSearch {
