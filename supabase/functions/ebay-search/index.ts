@@ -72,6 +72,23 @@ async function getOAuthToken(): Promise<string> {
   }
 }
 
+// eBay category ID mapping for better search results
+function getCategoryId(category: string): string | null {
+  const categoryMap: { [key: string]: string } = {
+    'electronics': '293',
+    'fashion': '11450',
+    'home': '11700',
+    'sporting': '888',
+    'toys': '220',
+    'business': '12576',
+    'jewelry': '281',
+    'motors': '6028', // eBay Motors - this is key for automotive searches
+    'collectibles': '1'
+  };
+  
+  return categoryMap[category] || null;
+}
+
 function buildFilterString(filters: any): string {
   const filterParts: string[] = [];
 
@@ -354,6 +371,15 @@ Deno.serve(async (req) => {
     searchUrl.searchParams.append('q', query.trim());
     searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
+    // Add category filter if specified and not "all"
+    if (filters.category && filters.category !== 'all') {
+      const categoryId = getCategoryId(filters.category);
+      if (categoryId) {
+        searchUrl.searchParams.append('category_ids', categoryId);
+        console.log(`Applied category filter: ${filters.category} -> ${categoryId}`);
+      }
+    }
+    
     if (filterString) {
       searchUrl.searchParams.append('filter', filterString);
     }
@@ -453,4 +479,4 @@ Deno.serve(async (req) => {
       }
     );
   }
-}); 
+});
