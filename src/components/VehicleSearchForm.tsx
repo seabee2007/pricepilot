@@ -41,11 +41,14 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
   // Load vehicle aspects on component mount
   useEffect(() => {
     const loadAspects = async () => {
+      console.log('🚀 [VehicleSearchForm] Component mounted, loading vehicle aspects...');
       setLoadingAspects(true);
+      
       try {
-        console.log('Loading vehicle aspects from eBay Browse API...');
+        console.log('📞 [VehicleSearchForm] Calling getVehicleAspects...');
         const aspects = await getVehicleAspects();
-        console.log('Vehicle aspects loaded:', {
+        
+        console.log('✅ [VehicleSearchForm] Vehicle aspects loaded successfully:', {
           makes: aspects.makes.length,
           models: aspects.models.length,
           years: aspects.years.length
@@ -53,15 +56,24 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
         
         // Log sample data to verify real counts
         if (aspects.makes.length > 0) {
-          console.log('Sample makes with real counts:', aspects.makes.slice(0, 5));
+          console.log('📊 [VehicleSearchForm] Sample makes with real counts:', 
+            aspects.makes.slice(0, 5).map(m => `${m.displayName}(${m.count})`)
+          );
         }
         if (aspects.models.length > 0) {
-          console.log('Sample models with make association:', aspects.models.slice(0, 5));
+          console.log('📊 [VehicleSearchForm] Sample models with make association:', 
+            aspects.models.slice(0, 5).map(m => `${m.displayName}(${m.make || 'no-make'})`)
+          );
         }
         
         setVehicleAspects(aspects);
+        console.log('💾 [VehicleSearchForm] Vehicle aspects stored in component state');
       } catch (error) {
-        console.error('Error loading vehicle aspects:', error);
+        console.error('❌ [VehicleSearchForm] Error loading vehicle aspects:', {
+          errorType: error?.constructor?.name,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString()
+        });
         
         // Parse error message to show user-friendly info
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -74,6 +86,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           toast.error('Unable to load vehicle data from eBay. Please try again later.');
         }
       } finally {
+        console.log('🏁 [VehicleSearchForm] Loading aspects completed, setting loading to false');
         setLoadingAspects(false);
       }
     };
@@ -83,14 +96,28 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
 
   // Handle refresh of vehicle aspects
   const handleRefreshAspects = async () => {
+    console.log('🔄 [VehicleSearchForm] User triggered refresh of vehicle aspects');
     setRefreshingAspects(true);
+    
     try {
-      console.log('Refreshing vehicle aspects...');
+      console.log('📞 [VehicleSearchForm] Calling refreshVehicleAspects...');
       const aspects = await refreshVehicleAspects();
+      
+      console.log('✅ [VehicleSearchForm] Refresh completed successfully:', {
+        makes: aspects.makes.length,
+        models: aspects.models.length,
+        years: aspects.years.length
+      });
+      
       setVehicleAspects(aspects);
+      console.log('💾 [VehicleSearchForm] Refreshed data stored in component state');
       toast.success('Vehicle data refreshed with latest eBay inventory!');
     } catch (error) {
-      console.error('Error refreshing vehicle aspects:', error);
+      console.error('❌ [VehicleSearchForm] Error refreshing vehicle aspects:', {
+        errorType: error?.constructor?.name,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
       
       // Parse error message to show user-friendly info  
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -101,6 +128,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
         toast.error('Failed to refresh vehicle data from eBay. Please try again later.');
       }
     } finally {
+      console.log('🏁 [VehicleSearchForm] Refresh completed, setting refreshing to false');
       setRefreshingAspects(false);
     }
   };
@@ -110,14 +138,26 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
 
   // Handle make selection change
   const handleMakeChange = (make: string) => {
+    console.log(`🎯 [VehicleSearchForm] User selected make: "${make}"`);
+    console.log('   - Previous make:', selectedMake);
+    console.log('   - Previous model:', selectedModel);
+    
     setSelectedMake(make);
     setSelectedModel(''); // Reset model when make changes
     
+    console.log('📞 [VehicleSearchForm] Getting available models for selected make...');
     // Log available models for debugging
     const models = getModelsForMake(vehicleAspects, make);
-    console.log(`Selected make: ${make}, Available models: ${models.length}`);
+    console.log(`✅ [VehicleSearchForm] Found ${models.length} models for make: ${make}`);
+    
     if (models.length > 0) {
-      console.log('Sample models for this make:', models.slice(0, 5).map(m => `${m.displayName} (${m.count})`));
+      console.log('📊 [VehicleSearchForm] Sample models for this make:', 
+        models.slice(0, 5).map(m => `${m.displayName} (${m.count})`)
+      );
+    } else {
+      console.log('⚠️ [VehicleSearchForm] No models found for this make');
+      console.log('   - Total models in data:', vehicleAspects.models.length);
+      console.log('   - Models with make property:', vehicleAspects.models.filter(m => m.make).length);
     }
   };
 
