@@ -565,6 +565,16 @@ Deno.serve(async (req) => {
     
     const vehicleFilter = buildVehicleFilter(vehicleData, conditionIds);
     
+    // TEMPORARY DEBUG: Let's trace exactly what's happening
+    console.log('🔍 [URGENT DEBUG] Vehicle filter generation:');
+    console.log('  - Input vehicleData:', JSON.stringify(vehicleData, null, 2));
+    console.log('  - vehicleData.make:', vehicleData?.make);
+    console.log('  - vehicleData.model:', vehicleData?.model);
+    console.log('  - vehicleData.year:', vehicleData?.year);
+    console.log('  - Generated vehicleFilter:', `"${vehicleFilter}"`);
+    console.log('  - vehicleFilter length:', vehicleFilter?.length);
+    console.log('  - vehicleFilter empty?', !vehicleFilter);
+    
     // Debug logging for vehicle search
     console.log('🔍 Vehicle search debug info:');
     console.log('  - Original query:', query);
@@ -606,11 +616,19 @@ Deno.serve(async (req) => {
     }
 
     // 2) Vehicle aspects (Make/Model/Year) go in "aspect_filter" parameter
+    console.log('🔍 [URGENT DEBUG] URL construction:');
+    console.log('  - vehicleFilter value:', `"${vehicleFilter}"`);
+    console.log('  - vehicleFilter truthy?', !!vehicleFilter);
+    console.log('  - vehicleFilter length:', vehicleFilter?.length);
+    
     if (vehicleFilter) {
       // Always prefix with the categoryId for vehicle aspects
       const aspectFilter = `categoryId:6001,${vehicleFilter}`;
       searchUrl.searchParams.append('aspect_filter', aspectFilter);
       console.log(`Applied aspect_filter: ${aspectFilter}`);
+      console.log('🔍 [URGENT DEBUG] Successfully added aspect_filter to URL!');
+    } else {
+      console.log('🔍 [URGENT DEBUG] vehicleFilter is empty - NO aspect_filter added!');
     }
     
     if (compatibilityFilter) {
