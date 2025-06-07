@@ -558,7 +558,7 @@ Deno.serve(async (req) => {
     let compatibilityFilter = '';
     if (filters.compatibilityFilter) {
       if (typeof filters.compatibilityFilter === 'string') {
-        // Direct string format (from searchVehicleCompatibleParts)
+        // Direct string format
         compatibilityFilter = filters.compatibilityFilter;
       } else {
         // Object format (from existing compatibility search)
