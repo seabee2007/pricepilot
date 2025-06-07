@@ -26,6 +26,7 @@ interface ItemSummary {
     value: number;
     currency: string;
   };
+  itemWebUrl: string;
 }
 
 interface UserProfile {
@@ -124,7 +125,7 @@ const searchLiveItems = async (query: string, filters: SavedSearch["filters"]): 
 };
 
 // Email helper function using Resend
-const sendPriceAlert = async (userId: string, query: string, newPrice: number, threshold: number) => {
+const sendPriceAlert = async (userId: string, query: string, newPrice: number, threshold: number, itemUrl: string, itemTitle: string) => {
   try {
     console.log(`📧 Starting sendPriceAlert for user: ${userId}, query: ${query}`);
     
@@ -179,6 +180,7 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
             .savings { background: #dcfce7; color: #166534; padding: 10px 15px; border-radius: 6px; margin: 15px 0; }
             .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
             .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; }
+            .item-title { font-style: italic; color: #4b5563; margin: 10px 0; }
           </style>
         </head>
         <body>
@@ -191,7 +193,11 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
             <div class="content">
               <div class="alert-card">
                 <h2>Hi ${userName}!</h2>
-                <p>Great news! The price for "<strong>${query}</strong>" has dropped below your alert threshold.</p>
+                <p>Great news! We found a specific item matching "<strong>${query}</strong>" that has dropped below your alert threshold.</p>
+                
+                <div class="item-title">
+                  "${itemTitle}"
+                </div>
                 
                 <div class="price-highlight">
                   New Price: $${newPrice.toFixed(2)}
@@ -201,10 +207,10 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
                   💰 You're saving $${savings.toFixed(2)} (${priceDropPercent}% below your alert of $${threshold.toFixed(2)})
                 </div>
                 
-                <p>This is a great time to check out the latest listings and potentially make a purchase!</p>
+                <p>This is a great time to check out this specific listing and potentially make a purchase!</p>
                 
-                <a href="https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=15" class="button">
-                  View eBay Listings Now →
+                <a href="${itemUrl}" class="button">
+                  View This Item on eBay →
                 </a>
                 
                 <p style="margin-top: 20px; text-align: center;">
@@ -276,7 +282,7 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
 
     const emailData = await emailResponse.json();
     console.log(`✅ Email sent successfully - Message ID: ${emailData.id}`);
-    console.log(`📧 Alert: ${query} dropped to $${newPrice} (below threshold of $${threshold})`);
+    console.log(`📧 Alert: ${query} dropped to $${newPrice} (below threshold of $${threshold}) - Item: ${itemTitle}`);
     
   } catch (error) {
     console.error("❌ Error in sendPriceAlert function:", error);
@@ -286,7 +292,9 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
       userId,
       query,
       newPrice,
-      threshold
+      threshold,
+      itemUrl,
+      itemTitle
     });
     throw error;
   }
@@ -330,10 +338,18 @@ const checkPriceAlerts = async () => {
           continue;
         }
         
-        // Find lowest price
-        const lowestPrice = Math.min(...items.map(item => item.price.value));
+        // Find the item with the lowest price
+        let lowestPriceItem = items[0];
+        for (const item of items) {
+          if (item.price.value < lowestPriceItem.price.value) {
+            lowestPriceItem = item;
+          }
+        }
+        
+        const lowestPrice = lowestPriceItem.price.value;
         
         console.log(`💰 Query: "${search.query}" | Lowest: $${lowestPrice} | Threshold: $${search.price_threshold} | Last: $${search.last_checked_price || 'N/A'}`);
+        console.log(`🔗 Lowest price item: "${lowestPriceItem.title}" - ${lowestPriceItem.itemWebUrl}`);
         
         // Check if price is below threshold and lower than last checked price
         if (
@@ -342,8 +358,15 @@ const checkPriceAlerts = async () => {
         ) {
           console.log(`🚨 ALERT TRIGGERED for "${search.query}" - sending email...`);
           
-          // Send price alert
-          await sendPriceAlert(search.user_id, search.query, lowestPrice, search.price_threshold);
+          // Send price alert with specific item details
+          await sendPriceAlert(
+            search.user_id, 
+            search.query, 
+            lowestPrice, 
+            search.price_threshold,
+            lowestPriceItem.itemWebUrl,
+            lowestPriceItem.title
+          );
           alertsSent++;
         }
         
@@ -495,7 +518,7 @@ Deno.serve(async (req) => {
         console.log(`📧 Attempting to send test email to user: ${user.email}`);
         
         // Force send a test email
-        await sendPriceAlert(user.id, "iPhone 13 (Test Alert)", 599.99, 699.99);
+        await sendPriceAlert(user.id, "Test Product Alert", 99.99, 149.99, "https://www.ebay.com/itm/test-item", "Test Product - Sample Alert");
         
         console.log(`✅ Test email completed successfully for ${user.email}`);
         
