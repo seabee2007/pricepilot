@@ -6,238 +6,229 @@ let aspectsCache: VehicleAspects | null = null;
 let cacheTimestamp: number = 0;
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
-// Get vehicle data for actual vehicle searches (not parts compatibility)
-export async function getVehicleDataForSearch(): Promise<VehicleAspects> {
-  // For actual vehicle searches, we don't use Taxonomy API
-  // Instead, we use a comprehensive static dataset of vehicles
-  console.log('Getting vehicle data for vehicle search (not parts compatibility)');
+// Get vehicle data using Browse API search results (no Taxonomy API)
+export async function getVehicleDataFromBrowseAPI(): Promise<VehicleAspects> {
+  console.log('Getting vehicle data from Browse API (no Taxonomy API)...');
   
-  // Return comprehensive fallback data optimized for vehicle searches
-  return getFallbackVehicleAspects();
-}
-
-// Get vehicle aspects for parts compatibility (uses Taxonomy API)
-export async function getVehicleAspectsForParts(): Promise<VehicleAspects> {
-  // Return cached data if still valid
-  if (aspectsCache && Date.now() - cacheTimestamp < CACHE_DURATION) {
-    console.log('Returning cached vehicle aspects for parts');
-    return aspectsCache;
-  }
-
   try {
-    console.log('Fetching vehicle aspects for parts compatibility from Taxonomy API...');
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.access_token) {
       throw new Error('Authentication required');
     }
 
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-vehicle-aspects`, {
+    // Use eBay Browse API to search for popular vehicles and extract data
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        query: 'vehicle car truck',
+        filters: {
+          category: 'motors',
+          // Get a broad sample to extract vehicle data
+        },
+        pageSize: 200, // Get more results to extract vehicle data
+        mode: 'live'
+      }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Vehicle aspects API error:', errorText);
-      throw new Error(`Failed to fetch vehicle aspects: ${response.status} - ${errorText}`);
+      console.error('Browse API error:', errorText);
+      throw new Error(`Failed to fetch vehicle data: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('Received vehicle aspects for parts:', {
-      makes: data.makes?.length || 0,
-      models: data.models?.length || 0,
-      years: data.years?.length || 0,
-      properties: data.compatibilityProperties?.length || 0
+    console.log('Browse API response received:', data.items?.length || 0, 'vehicles');
+    
+    // Extract vehicle data from actual eBay listings
+    const makes = new Set<string>();
+    const models = new Set<string>();
+    const years = new Set<string>();
+    
+    // Parse vehicle data from listing titles and item specifics
+    (data.items || []).forEach((item: any) => {
+      const title = item.title || '';
+      const itemSpecifics = item.localizedAspects || [];
+      
+      // Extract year from title (look for 4-digit years)
+      const yearMatch = title.match(/\b(19|20)\d{2}\b/);
+      if (yearMatch) {
+        years.add(yearMatch[0]);
+      }
+      
+      // Extract from item specifics if available
+      itemSpecifics.forEach((aspect: any) => {
+        if (aspect.name === 'Year' && aspect.value) {
+          years.add(aspect.value);
+        }
+        if (aspect.name === 'Make' && aspect.value) {
+          makes.add(aspect.value);
+        }
+        if (aspect.name === 'Model' && aspect.value) {
+          models.add(aspect.value);
+        }
+      });
     });
     
-    // Validate the data structure
-    if (!data.makes || !data.models || !data.years || !data.compatibilityProperties) {
-      throw new Error('Invalid vehicle aspects data structure');
-    }
+    // Convert sets to arrays and create VehicleAspects structure
+    const makesList = Array.from(makes).sort().map(make => ({
+      value: make,
+      displayName: make,
+      count: 100
+    }));
     
-    // Filter out any items with zero counts and ensure proper structure
-    const filteredData: VehicleAspects = {
-      makes: data.makes.filter((make: VehicleAspect) => make.count > 0),
-      models: data.models.filter((model: VehicleAspect) => model.count > 0),
-      years: data.years.filter((year: VehicleAspect) => year.count > 0),
-      compatibilityProperties: data.compatibilityProperties || []
-    };
+    const modelsList = Array.from(models).sort().map(model => ({
+      value: model,
+      displayName: model,
+      count: 100
+    }));
     
-    console.log('Filtered vehicle aspects for parts:', {
-      makes: filteredData.makes.length,
-      models: filteredData.models.length,
-      years: filteredData.years.length,
-      properties: filteredData.compatibilityProperties.length
-    });
+    const yearsList = Array.from(years).sort((a, b) => parseInt(b) - parseInt(a)).map(year => ({
+      value: year,
+      displayName: year,
+      count: 100
+    }));
     
-    // Cache the results
-    aspectsCache = filteredData;
-    cacheTimestamp = Date.now();
-    
-    return filteredData;
-  } catch (error) {
-    console.error('Error fetching vehicle aspects for parts:', error);
-    
-    // Return fallback data if API fails
-    console.log('Using fallback vehicle aspects for parts due to API error');
+    // Merge with fallback data to ensure comprehensive coverage
     const fallbackData = getFallbackVehicleAspects();
     
-    // Cache fallback data for a shorter time (5 minutes)
-    aspectsCache = fallbackData;
-    cacheTimestamp = Date.now() - (CACHE_DURATION - 5 * 60 * 1000);
+    const result: VehicleAspects = {
+      makes: [...makesList, ...fallbackData.makes].filter((make, index, self) => 
+        index === self.findIndex(m => m.value === make.value)
+      ).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      models: [...modelsList, ...fallbackData.models].filter((model, index, self) => 
+        index === self.findIndex(m => m.value === model.value)
+      ).sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      years: [...yearsList, ...fallbackData.years].filter((year, index, self) => 
+        index === self.findIndex(y => y.value === year.value)
+      ).sort((a, b) => parseInt(b.value) - parseInt(a.value)),
+      compatibilityProperties: [] // Not needed for Browse API
+    };
     
-    return fallbackData;
+    console.log('Extracted vehicle data from Browse API:', {
+      makes: result.makes.length,
+      models: result.models.length,
+      years: result.years.length
+    });
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Error fetching vehicle data from Browse API:', error);
+    console.log('Using fallback vehicle data');
+    return getFallbackVehicleAspects();
   }
 }
 
-// Main function - now delegates to appropriate sub-function
+// Main function - use Browse API only
 export async function getVehicleAspects(): Promise<VehicleAspects> {
-  // Use real eBay data for parts compatibility which includes vehicle information
-  // This provides live, up-to-date vehicle data from eBay's database
-  console.log('Loading real-time vehicle data from eBay...');
-  return getVehicleAspectsForParts();
+  console.log('Loading vehicle data using Browse API only (no Taxonomy API)...');
+  return getVehicleDataFromBrowseAPI();
 }
 
-// Get compatibility properties for a category
-export async function getCompatibilityProperties(categoryId: string = '33559'): Promise<CompatibilityProperty[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.access_token) {
-      throw new Error('Authentication required');
-    }
-
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-vehicle-aspects`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        action: 'getProperties',
-        categoryId
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Compatibility properties API error:', errorText);
-      throw new Error(`Failed to fetch compatibility properties: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.compatibilityProperties || [];
-  } catch (error) {
-    console.error('Error fetching compatibility properties:', error);
-    return [
-      { name: 'Year', localizedName: 'Year' },
-      { name: 'Make', localizedName: 'Make' },
-      { name: 'Model', localizedName: 'Model' },
-      { name: 'Trim', localizedName: 'Trim' },
-      { name: 'Engine', localizedName: 'Engine' }
-    ];
-  }
-}
-
-// Get property values with progressive filtering
-export async function getPropertyValues(
-  property: string,
-  categoryId: string = '33559',
-  filters?: { [key: string]: string }
-): Promise<VehicleAspect[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.access_token) {
-      throw new Error('Authentication required');
-    }
-
-    // Build filter string for Taxonomy API
-    let filterString = '';
-    if (filters && Object.keys(filters).length > 0) {
-      filterString = Object.entries(filters)
-        .map(([key, value]) => `${key}:${value}`)
-        .join(',');
-    }
-
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-vehicle-aspects`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        action: 'getPropertyValues',
-        categoryId,
-        compatibilityProperty: property,
-        filters: filterString
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Property values API error:', errorText);
-      throw new Error(`Failed to fetch property values: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.values || [];
-  } catch (error) {
-    console.error(`Error fetching ${property} values:`, error);
-    return [];
-  }
-}
-
-// Get models for a specific make using Taxonomy API
+// Get models for a specific make using Browse API (no Taxonomy API)
 export async function getModelsForMake(make: string, year?: string): Promise<VehicleAspect[]> {
-  const filters: { [key: string]: string } = { Make: make };
-  if (year) {
-    filters.Year = year;
-  }
+  console.log(`Getting models for ${make} using Browse API...`);
   
-  return getPropertyValues('Model', '33559', filters);
-}
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      throw new Error('Authentication required');
+    }
 
-// Get trims for specific make/model/year
-export async function getTrimsForVehicle(
-  make: string, 
-  model: string, 
-  year?: string
-): Promise<VehicleAspect[]> {
-  const filters: { [key: string]: string } = { 
-    Make: make, 
-    Model: model 
-  };
-  if (year) {
-    filters.Year = year;
-  }
-  
-  return getPropertyValues('Trim', '33559', filters);
-}
+    // Build search query for specific make
+    let query = make;
+    if (year) {
+      query += ` ${year}`;
+    }
 
-// Get engines for specific make/model/year/trim
-export async function getEnginesForVehicle(
-  make: string, 
-  model: string, 
-  year?: string,
-  trim?: string
-): Promise<VehicleAspect[]> {
-  const filters: { [key: string]: string } = { 
-    Make: make, 
-    Model: model 
-  };
-  if (year) filters.Year = year;
-  if (trim) filters.Trim = trim;
-  
-  return getPropertyValues('Engine', '33559', filters);
+    // Use eBay Browse API to search for vehicles of this make
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        query,
+        filters: {
+          category: 'motors',
+        },
+        pageSize: 200, // Get more results to extract model data
+        mode: 'live'
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Browse API error:', errorText);
+      throw new Error(`Failed to fetch models: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log(`Browse API response for ${make}:`, data.items?.length || 0, 'vehicles');
+    
+    // Extract models from actual eBay listings
+    const models = new Set<string>();
+    
+    // Parse model data from listing titles and item specifics
+    (data.items || []).forEach((item: any) => {
+      const title = item.title || '';
+      const itemSpecifics = item.localizedAspects || [];
+      
+      // Extract from item specifics if available
+      itemSpecifics.forEach((aspect: any) => {
+        if (aspect.name === 'Model' && aspect.value) {
+          models.add(aspect.value);
+        }
+      });
+      
+      // Also try to extract model from title
+      // This is basic pattern matching - could be enhanced
+      const titleWords = title.toLowerCase().split(/\s+/);
+      const makeIndex = titleWords.findIndex((word: string) => word.includes(make.toLowerCase()));
+      if (makeIndex >= 0 && makeIndex < titleWords.length - 1) {
+        // Look for potential model name after make
+        const potentialModel = titleWords[makeIndex + 1];
+        if (potentialModel && potentialModel.length > 1) {
+          models.add(potentialModel.charAt(0).toUpperCase() + potentialModel.slice(1));
+        }
+      }
+    });
+    
+    // Convert to VehicleAspect format
+    const modelsList = Array.from(models)
+      .filter(model => model.length > 1) // Filter out single characters
+      .sort()
+      .map(model => ({
+        value: model,
+        displayName: model,
+        count: 100,
+        make
+      }));
+    
+    console.log(`Found ${modelsList.length} models for ${make} from Browse API`);
+    
+    // If we found models, return them, otherwise fallback to common models
+    if (modelsList.length > 0) {
+      return modelsList;
+    } else {
+      console.log(`No models found via Browse API for ${make}, using common models`);
+      return getCommonModelsForMake(make);
+    }
+    
+  } catch (error) {
+    console.error(`Error fetching models for ${make} from Browse API:`, error);
+    console.log(`Using common models for ${make} due to API error`);
+    return getCommonModelsForMake(make);
+  }
 }
 
 // Get models for a specific make from cached data (fallback)
