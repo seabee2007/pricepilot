@@ -751,3 +751,153 @@ if (typeof window !== 'undefined') {
     }
   };
 }
+
+/**
+ * Get detailed information for a specific item using eBay Browse API
+ * Uses the /item/{item_id} endpoint with fieldgroups for detailed response
+ */
+export async function getItemDetails(
+  itemId: string,
+  fieldgroups: string[] = ['PRODUCT', 'ADDITIONAL_SELLER_DETAILS', 'COMPATIBILITY']
+): Promise<any> {
+  const requestKey = createRequestKey('getItemDetails', { itemId, fieldgroups });
+  
+  return makeThrottledRequest(requestKey, async () => {
+    try {
+      console.log('🔍 Getting detailed item info for:', itemId);
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error('Authentication required. Please sign in.');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+      };
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-item-details`;
+      
+      console.log('🌐 Making request to:', functionUrl);
+      console.log('📦 Request payload:', { itemId, fieldgroups });
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          itemId,
+          fieldgroups
+        }),
+      });
+
+      console.log('📡 Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Response not ok. Error text:', errorText);
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ Parsed error data:', errorData);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(errorData.error || 'Failed to get item details');
+        } catch (parseError) {
+          console.error('❌ Could not parse error response:', parseError);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(`eBay API error: ${response.status} - ${errorText}`);
+        }
+      }
+
+      const data = await response.json();
+      console.log('✅ eBay Item Details Response received:', data);
+      return data;
+    } catch (error) {
+      console.error('💥 Error in getItemDetails:', error);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Get details for multiple items using eBay Browse API
+ * Uses the /item/ endpoint to get abbreviated details for multiple items efficiently
+ */
+export async function getMultipleItems(
+  itemIds: string[],
+  itemGroupIds: string[] = []
+): Promise<any[]> {
+  const requestKey = createRequestKey('getMultipleItems', { itemIds, itemGroupIds });
+  
+  return makeThrottledRequest(requestKey, async () => {
+    try {
+      console.log('🔍 Getting details for multiple items:', itemIds.length, 'items');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error('Authentication required. Please sign in.');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+      };
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-multiple-items`;
+      
+      console.log('🌐 Making request to:', functionUrl);
+      console.log('📦 Request payload:', { itemIds, itemGroupIds });
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          itemIds,
+          itemGroupIds
+        }),
+      });
+
+      console.log('📡 Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Response not ok. Error text:', errorText);
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ Parsed error data:', errorData);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(errorData.error || 'Failed to get multiple items');
+        } catch (parseError) {
+          console.error('❌ Could not parse error response:', parseError);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(`eBay API error: ${response.status} - ${errorText}`);
+        }
+      }
+
+      const data = await response.json();
+      console.log('✅ eBay Multiple Items Response received:', data.items?.length || 0, 'items');
+      return data.items || [];
+    } catch (error) {
+      console.error('💥 Error in getMultipleItems:', error);
+      throw error;
+    }
+  });
+}
