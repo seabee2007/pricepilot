@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { ItemSummary, SearchMode } from '../types';
 import { formatCurrency, truncateText, getConditionName } from '../lib/utils';
-import { ArrowUp, ArrowDown, ExternalLink, BookmarkPlus, Truck, Shield } from 'lucide-react';
+import { ArrowUp, ArrowDown, ExternalLink, BookmarkPlus, Truck, Shield, Heart, HeartOff } from 'lucide-react';
 import Button from './ui/Button';
+import { saveItem, checkIfItemSaved, deleteSavedItem, getSavedItems } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 interface ResultsListProps {
@@ -15,6 +16,25 @@ interface ResultsListProps {
 const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsListProps) => {
   const [sortField, setSortField] = useState<'price' | 'shipping'>('price');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(mode === 'buy' ? 'asc' : 'desc');
+  const [savedItemIds, setSavedItemIds] = useState<Set<string>>(new Set());
+  const [savingItems, setSavingItems] = useState<Set<string>>(new Set());
+
+  // Check which items are already saved when component mounts
+  useState(() => {
+    const checkSavedItems = async () => {
+      try {
+        const savedItems = await getSavedItems();
+        const savedIds = new Set(savedItems.map(item => item.item_id));
+        setSavedItemIds(savedIds);
+      } catch (error) {
+        console.error('Error checking saved items:', error);
+      }
+    };
+
+    if (items.length > 0) {
+      checkSavedItems();
+    }
+  });
 
   // 🕵️‍♂️ Debug component props
   console.group('🕵️‍♂️ ResultsList component debug');
@@ -45,6 +65,69 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
     if (onSaveSearch) {
       onSaveSearch();
       toast.success('Search saved successfully!');
+    }
+  };
+
+  const handleSaveItem = async (item: ItemSummary, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent opening eBay listing
+    
+    if (savingItems.has(item.itemId)) {
+      return; // Already saving this item
+    }
+
+    setSavingItems(prev => new Set(prev).add(item.itemId));
+
+    try {
+      if (savedItemIds.has(item.itemId)) {
+        // Item is saved, remove it
+        const savedItems = await getSavedItems();
+        const savedItem = savedItems.find(saved => saved.item_id === item.itemId);
+        
+        if (savedItem) {
+          await deleteSavedItem(savedItem.id);
+          setSavedItemIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(item.itemId);
+            return newSet;
+          });
+          toast.success('Item removed from saved items');
+        }
+      } else {
+        // Item is not saved, save it
+        await saveItem({
+          itemId: item.itemId,
+          title: item.title,
+          price: item.price?.value || 0,
+          currency: item.price?.currency || 'USD',
+          imageUrl: item.image?.imageUrl,
+          itemUrl: item.itemWebUrl,
+          condition: item.condition,
+          sellerUsername: item.seller?.username,
+          sellerFeedbackScore: item.seller?.feedbackScore,
+          sellerFeedbackPercentage: item.seller?.feedbackPercentage,
+          shippingCost: item.shippingOptions?.[0]?.shippingCost?.value,
+          shippingCurrency: item.shippingOptions?.[0]?.shippingCost?.currency,
+          buyingOptions: item.buyingOptions,
+        });
+
+        setSavedItemIds(prev => new Set(prev).add(item.itemId));
+        toast.success('Item saved successfully!');
+      }
+    } catch (error: any) {
+      console.error('Error saving/removing item:', error);
+      if (error.message === 'Item is already saved') {
+        toast.error('Item is already in your saved items');
+      } else if (error.message === 'User must be logged in to save items') {
+        toast.error('Please sign in to save items');
+      } else {
+        toast.error('Failed to save item. Please try again.');
+      }
+    } finally {
+      setSavingItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(item.itemId);
+        return newSet;
+      });
     }
   };
 
@@ -84,14 +167,16 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           {items.length} {mode === 'buy' ? 'Deals' : 'Completed Sales'} Found
         </h2>
-        <Button 
-          variant="outline"
-          onClick={handleSaveSearch}
-          icon={<BookmarkPlus className="h-4 w-4" />}
-          size="sm"
-        >
-          Save Search
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={handleSaveSearch}
+            icon={<BookmarkPlus className="h-4 w-4" />}
+            size="sm"
+          >
+            Save Search
+          </Button>
+        </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
@@ -120,6 +205,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                 <ArrowDown className="ml-1 h-3 w-3" />
             )}
           </button>
+          <div className="w-16 text-center">Save</div>
         </div>
         
         {/* Results */}
@@ -130,13 +216,18 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
             console.log('🎨 Item title:', item.title);
             console.log('🎨 Item price:', item.price);
             
+            const isSaved = savedItemIds.has(item.itemId);
+            const isSaving = savingItems.has(item.itemId);
+            
             return (
               <div 
                 key={item.itemId} 
-                className="flex flex-col sm:flex-row hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-150 cursor-pointer"
-                onClick={() => openEbayListing(item.itemWebUrl)}
+                className="flex flex-col sm:flex-row hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-150"
               >
-                <div className="flex items-center p-4 w-full sm:w-3/5">
+                <div 
+                  className="flex items-center p-4 w-full sm:w-3/5 cursor-pointer"
+                  onClick={() => openEbayListing(item.itemWebUrl)}
+                >
                   <div className="flex-shrink-0 h-16 w-16 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden">
                     {item.image?.imageUrl ? (
                       <img 
@@ -196,6 +287,26 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                       </span>
                     )}
                   </div>
+                </div>
+                <div className="flex items-center justify-center p-4 w-16">
+                  <button
+                    onClick={(e) => handleSaveItem(item, e)}
+                    disabled={isSaving}
+                    className={`p-2 rounded-full transition-colors ${
+                      isSaved 
+                        ? 'text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-900/20' 
+                        : 'text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                    } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isSaved ? 'Remove from saved items' : 'Save this item'}
+                  >
+                    {isSaving ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
+                    ) : isSaved ? (
+                      <Heart className="h-5 w-5 fill-current" />
+                    ) : (
+                      <Heart className="h-5 w-5" />
+                    )}
+                  </button>
                 </div>
               </div>
             );

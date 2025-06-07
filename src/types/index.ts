@@ -81,6 +81,29 @@ export interface SavedSearch {
   created_at: string;
 }
 
+export interface SavedItem {
+  id: string;
+  user_id: string;
+  item_id: string;
+  title: string;
+  price: number;
+  currency: string;
+  image_url?: string;
+  item_url: string;
+  condition?: string;
+  seller_username?: string;
+  seller_feedback_score?: number;
+  seller_feedback_percentage?: string;
+  shipping_cost?: number;
+  shipping_currency?: string;
+  buying_options?: string[];
+  notes?: string;
+  price_alert_threshold?: number;
+  last_checked_price?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PriceHistory {
   id: string;
   query: string;
