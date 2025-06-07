@@ -7,11 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Token cache for Client Credentials flow
-let tokenCache: {
-  access_token: string;
-  expires_at: number;
-} | null = null;
+// Bulletproof token caching with auto-refresh
+let cachedToken = null;
+let tokenExpiresAt = 0;
 
 // Retry fetch with exponential backoff for transient errors
 async function fetchWithRetry(url: string, opts: any, retries = 3): Promise<Response> {
@@ -72,12 +70,16 @@ async function fetchWithRetry(url: string, opts: any, retries = 3): Promise<Resp
   throw new Error('Max retries reached');
 }
 
-async function getOAuthToken(): Promise<string> {
-  // Check if we have a cached token that's still valid
-  if (tokenCache && tokenCache.expires_at > Date.now()) {
-    console.log('✅ Using cached OAuth token');
-    return tokenCache.access_token;
+async function getApplicationToken(): Promise<string> {
+  const now = Date.now();
+
+  // If we still have a valid token (with a minute buffer), reuse it
+  if (cachedToken && now < tokenExpiresAt - 60_000) {
+    console.log('✅ Using cached eBay token');
+    return cachedToken;
   }
+
+  console.log('🔄 Fetching fresh eBay token...');
 
   const clientId = Deno.env.get('EBAY_CLIENT_ID');
   const clientSecret = Deno.env.get('EBAY_CLIENT_SECRET');
@@ -93,8 +95,6 @@ async function getOAuthToken(): Promise<string> {
     ? 'https://api.ebay.com/identity/v1/oauth2/token'
     : 'https://api.sandbox.ebay.com/identity/v1/oauth2/token';
 
-  console.log(`🔑 Getting OAuth token via Client Credentials flow from ${isProduction ? 'PRODUCTION' : 'SANDBOX'} eBay API`);
-
   try {
     const response = await fetch(oauthUrl, {
       method: 'POST',
@@ -102,38 +102,31 @@ async function getOAuthToken(): Promise<string> {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${credentials}`,
       },
-      body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope',
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        scope: 'https://api.ebay.com/oauth/api_scope'
+      })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ OAuth Error Response:', errorText);
-      throw new Error(`eBay OAuth failed: ${response.status} - ${errorText}`);
+      console.error('❌ eBay OAuth Error:', errorText);
+      throw new Error(`Failed to fetch eBay token: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json();
+    const { access_token, expires_in } = await response.json();
     
-    // Log token details for debugging
-    console.log(`✅ OAuth token obtained successfully`);
-    console.log(`  - Token type: ${data.token_type}`);
-    console.log(`  - Expires in: ${data.expires_in} seconds`);
-    console.log(`  - Scope: ${data.scope || 'Not specified'}`);
-    console.log(`  - Token prefix: ${data.access_token?.substring(0, 20)}...`);
-    
-    // Verify we have the correct scope
-    if (data.scope && !data.scope.includes('https://api.ebay.com/oauth/api_scope')) {
-      console.warn(`⚠️ Token scope may be insufficient: ${data.scope}`);
-    }
-    
-    // Cache the token (expires in 2 hours, cache for 1.5 hours for safety)
-    tokenCache = {
-      access_token: data.access_token,
-      expires_at: Date.now() + (data.expires_in * 1000 * 0.75), // 75% of actual expiry
-    };
-    
-    return data.access_token;
+    console.log('✅ Fresh eBay token obtained');
+    console.log(`  - Environment: ${isProduction ? 'PRODUCTION' : 'SANDBOX'}`);
+    console.log(`  - Expires in: ${expires_in} seconds`);
+
+    // Cache it with expiration
+    cachedToken = access_token;
+    tokenExpiresAt = now + (expires_in * 1000);
+
+    return access_token;
   } catch (error) {
-    console.error('❌ OAuth token error:', error);
+    console.error('❌ Error fetching eBay token:', error);
     throw error;
   }
 }
@@ -905,7 +898,7 @@ Deno.serve(async (req) => {
 
     // Get OAuth token and fetch filtered vehicle data
     console.log('🔑 Getting OAuth token...');
-    const token = await getOAuthToken();
+    const token = await getApplicationToken();
     
     console.log('🧪 Fetching vehicle aspects with progressive filtering...');
     const rawData = await fetchVehicleAspects(token, make || undefined, model || undefined);

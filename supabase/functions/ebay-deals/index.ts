@@ -6,57 +6,67 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Cache for the OAuth token
-let tokenCache: {
-  access_token: string;
-  expires_at: number;
-} | null = null;
+// Bulletproof token caching with auto-refresh
+let cachedToken = null;
+let tokenExpiresAt = 0;
 
-async function getOAuthToken(): Promise<string> {
-  // If token exists and is still valid, return it
-  if (tokenCache && tokenCache.expires_at > Date.now()) {
-    return tokenCache.access_token;
+async function getApplicationToken(): Promise<string> {
+  const now = Date.now();
+
+  // If we still have a valid token (with a minute buffer), reuse it
+  if (cachedToken && now < tokenExpiresAt - 60_000) {
+    console.log('✅ Using cached eBay token');
+    return cachedToken;
   }
+
+  console.log('🔄 Fetching fresh eBay token...');
 
   const clientId = Deno.env.get('EBAY_CLIENT_ID');
   const clientSecret = Deno.env.get('EBAY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    throw new Error('Missing eBay API credentials');
+    throw new Error('Missing eBay API credentials (EBAY_CLIENT_ID and EBAY_CLIENT_SECRET required)');
   }
 
   const credentials = btoa(`${clientId}:${clientSecret}`);
+  const isProduction = !clientId.includes('SBX');
+  
+  const oauthUrl = isProduction 
+    ? 'https://api.ebay.com/identity/v1/oauth2/token'
+    : 'https://api.sandbox.ebay.com/identity/v1/oauth2/token';
 
   try {
-    // Use sandbox OAuth endpoint for sandbox credentials
-    const oauthUrl = clientId.includes('SBX') 
-      ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
-      : 'https://api.ebay.com/identity/v1/oauth2/token';
-      
     const response = await fetch(oauthUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${credentials}`,
       },
-      body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope',
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        scope: 'https://api.ebay.com/oauth/api_scope'
+      })
     });
 
     if (!response.ok) {
-      throw new Error(`eBay OAuth error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('❌ eBay OAuth Error:', errorText);
+      throw new Error(`Failed to fetch eBay token: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json();
+    const { access_token, expires_in } = await response.json();
     
-    // Cache the token with expiration
-    tokenCache = {
-      access_token: data.access_token,
-      expires_at: Date.now() + (data.expires_in * 1000 * 0.9), // 90% of actual expiry time for safety
-    };
+    console.log('✅ Fresh eBay token obtained');
+    console.log(`  - Environment: ${isProduction ? 'PRODUCTION' : 'SANDBOX'}`);
+    console.log(`  - Expires in: ${expires_in} seconds`);
 
-    return data.access_token;
+    // Cache it with expiration
+    cachedToken = access_token;
+    tokenExpiresAt = now + (expires_in * 1000);
+
+    return access_token;
   } catch (error) {
-    console.error('Error fetching eBay OAuth token:', error);
+    console.error('❌ Error fetching eBay token:', error);
     throw error;
   }
 }
@@ -226,7 +236,7 @@ Deno.serve(async (req) => {
 
     const url = new URL(req.url);
     const pathname = url.pathname;
-    const token = await getOAuthToken();
+    const token = await getApplicationToken();
 
     // Route based on endpoint
     if (pathname.includes('/deal_items')) {
