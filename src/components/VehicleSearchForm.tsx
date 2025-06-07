@@ -118,16 +118,14 @@ const VehicleSearchForm = ({
     if (make) {
       setLoadingModels(true);
       try {
-        // Try to get models from Taxonomy API
-        const models = await getModelsForMake(make);
-        setDynamicModels(models);
-        console.log(`Loaded ${models.length} models for ${make} from Taxonomy API`);
-      } catch (error) {
-        console.error('Error loading models from Taxonomy API:', error);
-        // Fallback to cached data
+        // For vehicle searches, we use the cached fallback data only
+        // Taxonomy API is for parts compatibility, not vehicle discovery
         const cachedModels = getModelsForMakeFromCache(vehicleAspects, make);
         setDynamicModels(cachedModels);
-        console.log(`Using ${cachedModels.length} cached models for ${make}`);
+        console.log(`Found ${cachedModels.length} models for ${make} from cached data`);
+      } catch (error) {
+        console.error('Error loading models:', error);
+        setDynamicModels([]);
       } finally {
         setLoadingModels(false);
       }
@@ -311,12 +309,12 @@ const VehicleSearchForm = ({
                 value={selectedMake}
                 onChange={(e) => handleMakeChange(e.target.value)}
                 disabled={loadingAspects || refreshingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
               >
                 <option value="">Any Make</option>
                 {(vehicleAspects.makes || []).map((make) => (
                   <option key={make.value} value={make.value}>
-                    {make.displayName} ({make.count})
+                    {make.displayName}
                   </option>
                 ))}
               </select>
@@ -348,7 +346,6 @@ const VehicleSearchForm = ({
                   <option key={model.value} value={model.value}>
                     {model.displayName}
                     {model.make && model.make !== selectedMake ? ` (${model.make})` : ''}
-                    {model.count && ` (${model.count})`}
                   </option>
                 ))}
                 
@@ -382,7 +379,7 @@ const VehicleSearchForm = ({
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
                 disabled={loadingAspects || refreshingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50"
               >
                 <option value="">Any Year</option>
                 {(vehicleAspects.years || []).map((year) => (

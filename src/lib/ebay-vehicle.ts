@@ -6,15 +6,26 @@ let aspectsCache: VehicleAspects | null = null;
 let cacheTimestamp: number = 0;
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
-export async function getVehicleAspects(): Promise<VehicleAspects> {
+// Get vehicle data for actual vehicle searches (not parts compatibility)
+export async function getVehicleDataForSearch(): Promise<VehicleAspects> {
+  // For actual vehicle searches, we don't use Taxonomy API
+  // Instead, we use a comprehensive static dataset of vehicles
+  console.log('Getting vehicle data for vehicle search (not parts compatibility)');
+  
+  // Return comprehensive fallback data optimized for vehicle searches
+  return getFallbackVehicleAspects();
+}
+
+// Get vehicle aspects for parts compatibility (uses Taxonomy API)
+export async function getVehicleAspectsForParts(): Promise<VehicleAspects> {
   // Return cached data if still valid
   if (aspectsCache && Date.now() - cacheTimestamp < CACHE_DURATION) {
-    console.log('Returning cached vehicle aspects');
+    console.log('Returning cached vehicle aspects for parts');
     return aspectsCache;
   }
 
   try {
-    console.log('Fetching fresh vehicle aspects from Taxonomy API...');
+    console.log('Fetching vehicle aspects for parts compatibility from Taxonomy API...');
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.access_token) {
@@ -38,7 +49,7 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
     }
 
     const data = await response.json();
-    console.log('Received vehicle aspects:', {
+    console.log('Received vehicle aspects for parts:', {
       makes: data.makes?.length || 0,
       models: data.models?.length || 0,
       years: data.years?.length || 0,
@@ -58,7 +69,7 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
       compatibilityProperties: data.compatibilityProperties || []
     };
     
-    console.log('Filtered vehicle aspects:', {
+    console.log('Filtered vehicle aspects for parts:', {
       makes: filteredData.makes.length,
       models: filteredData.models.length,
       years: filteredData.years.length,
@@ -71,10 +82,10 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
     
     return filteredData;
   } catch (error) {
-    console.error('Error fetching vehicle aspects:', error);
+    console.error('Error fetching vehicle aspects for parts:', error);
     
     // Return fallback data if API fails
-    console.log('Using fallback vehicle aspects due to API error');
+    console.log('Using fallback vehicle aspects for parts due to API error');
     const fallbackData = getFallbackVehicleAspects();
     
     // Cache fallback data for a shorter time (5 minutes)
@@ -83,6 +94,13 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
     
     return fallbackData;
   }
+}
+
+// Main function - now delegates to appropriate sub-function
+export async function getVehicleAspects(): Promise<VehicleAspects> {
+  // For now, always use vehicle search data since we're building a vehicle search form
+  // In the future, this could be parameterized based on search type
+  return getVehicleDataForSearch();
 }
 
 // Get compatibility properties for a category
