@@ -138,23 +138,9 @@ export interface VehicleCompatibility {
   vehicleType?: 'car' | 'truck' | 'motorcycle';
 }
 
-export interface VehicleAspect {
-  value: string;
-  displayName: string;
-  count: number;
-  make?: string; // For models, to associate with specific makes
-}
-
 export interface CompatibilityProperty {
   name: string;
-  localizedName: string;
-}
-
-export interface VehicleAspects {
-  makes: VehicleAspect[];
-  models: VehicleAspect[];
-  years: VehicleAspect[];
-  compatibilityProperties: CompatibilityProperty[];
+  value: string;
 }
 
 export interface ItemCompatibility {

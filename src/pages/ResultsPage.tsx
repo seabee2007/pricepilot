@@ -19,9 +19,6 @@ const ResultsPage = () => {
   const query = searchParams.get('q') || '';
   const filtersParam = searchParams.get('filters') || '{}';
   
-  // Check if this is a vehicle search
-  const isVehicleSearch = searchParams.get('vehicleSearch') === 'true';
-  
   // Memoize the filters object to prevent unnecessary re-renders
   const filters: SearchFilters = useMemo(() => {
     try {
@@ -80,7 +77,6 @@ const ResultsPage = () => {
     console.log('🚀 useEffect triggered');
     console.log('🚀 Query:', query);
     console.log('🚀 Mode:', mode);
-    console.log('🚀 Is Vehicle Search:', isVehicleSearch);
     console.log('🚀 Current loading state:', loading);
     
     const fetchData = async () => {
@@ -242,26 +238,7 @@ const ResultsPage = () => {
   };
 
   const goBack = () => {
-    if (isVehicleSearch) {
-      // For vehicle searches, preserve the search state in URL parameters
-      const vehicleParams = new URLSearchParams({
-        vehicleSearch: 'true',
-        make: searchParams.get('make') || '',
-        model: searchParams.get('model') || '',
-        year: searchParams.get('year') || '',
-        yearFrom: searchParams.get('yearFrom') || '',
-        yearTo: searchParams.get('yearTo') || '',
-        priceMin: searchParams.get('priceMin') || '',
-        priceMax: searchParams.get('priceMax') || '',
-        condition: searchParams.get('condition') || '',
-        freeShipping: searchParams.get('freeShipping') || 'false',
-        buyItNowOnly: searchParams.get('buyItNowOnly') || 'false'
-      });
-      
-      navigate(`/?${vehicleParams.toString()}`);
-    } else {
-      navigate('/');
-    }
+    navigate('/');
   };
 
   return (
@@ -333,16 +310,11 @@ const ResultsPage = () => {
           className="mb-4"
           icon={<ArrowLeft className="h-4 w-4" />}
         >
-          {isVehicleSearch ? 'Back to Vehicle Search' : 'Back to Search'}
+          Back to Search
         </Button>
         
         <h1 className={`text-2xl font-bold ${mode === 'buy' ? 'text-blue-700 dark:text-blue-500' : 'text-green-700 dark:text-green-500'}`}>
           {mode === 'buy' ? 'Buy Results' : 'Sell Estimate'}: {query}
-          {isVehicleSearch && (
-            <span className="ml-2 text-sm font-normal text-gray-600 dark:text-gray-400">
-              (Vehicle Search)
-            </span>
-          )}
         </h1>
       </div>
       

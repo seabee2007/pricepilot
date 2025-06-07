@@ -4,66 +4,39 @@ import { Car, Search, ChevronDown, Loader2, ArrowLeft, RefreshCw } from 'lucide-
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
 import { SearchFilters, SearchMode } from '../types';
-import { getVehicleAspects, refreshVehicleAspects, getModelsForMakeFromCache, getModelsForMake } from '../lib/ebay-vehicle';
+import { getVehicleAspects, VehicleAspects, refreshVehicleAspects, getModelsForMake } from '../lib/ebay-vehicle';
 import toast from 'react-hot-toast';
-import { VehicleAspects, VehicleAspect } from '../types';
 
 interface VehicleSearchFormProps {
   mode: SearchMode;
   onSearch?: (query: string, filters: SearchFilters) => void;
   onBack?: () => void;
-  // Add props to preserve user inputs when returning from results
-  initialMake?: string;
-  initialModel?: string;
-  initialYear?: string;
-  initialYearRange?: { from: string; to: string };
-  initialPriceRange?: { min: string; max: string };
-  initialCondition?: number[];
-  initialFreeShipping?: boolean;
-  initialBuyItNowOnly?: boolean;
 }
 
-const VehicleSearchForm = ({ 
-  mode, 
-  onSearch, 
-  onBack,
-  initialMake = '',
-  initialModel = '',
-  initialYear = '',
-  initialYearRange = { from: '', to: '' },
-  initialPriceRange = { min: '', max: '' },
-  initialCondition = [],
-  initialFreeShipping = false,
-  initialBuyItNowOnly = false
-}: VehicleSearchFormProps) => {
+const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingAspects, setLoadingAspects] = useState(false);
   const [refreshingAspects, setRefreshingAspects] = useState(false);
   
-  // Vehicle selection state - initialize with passed values
-  const [selectedMake, setSelectedMake] = useState(initialMake);
-  const [selectedModel, setSelectedModel] = useState(initialModel);
-  const [selectedYear, setSelectedYear] = useState(initialYear);
-  const [yearRange, setYearRange] = useState(initialYearRange);
+  // Vehicle selection state
+  const [selectedMake, setSelectedMake] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [yearRange, setYearRange] = useState({ from: '', to: '' });
   
   // Available options from eBay API
   const [vehicleAspects, setVehicleAspects] = useState<VehicleAspects>({
     makes: [],
     models: [],
-    years: [],
-    compatibilityProperties: []
+    years: []
   });
   
-  // Additional filters - initialize with passed values
-  const [priceRange, setPriceRange] = useState(initialPriceRange);
-  const [condition, setCondition] = useState<number[]>(initialCondition);
-  const [freeShipping, setFreeShipping] = useState(initialFreeShipping);
-  const [buyItNowOnly, setBuyItNowOnly] = useState(initialBuyItNowOnly);
-
-  // New state for dynamic model loading
-  const [dynamicModels, setDynamicModels] = useState<VehicleAspect[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
+  // Additional filters
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
+  const [condition, setCondition] = useState<number[]>([]);
+  const [freeShipping, setFreeShipping] = useState(false);
+  const [buyItNowOnly, setBuyItNowOnly] = useState(false);
 
   // Load vehicle aspects on component mount
   useEffect(() => {
@@ -78,6 +51,8 @@ const VehicleSearchForm = ({
           years: aspects.years.length
         });
         setVehicleAspects(aspects);
+        
+        // No success toast - removed the "loaded..." notification
       } catch (error) {
         console.error('Error loading vehicle aspects:', error);
         toast.error('Failed to load vehicle options. Using fallback data.');
@@ -105,42 +80,19 @@ const VehicleSearchForm = ({
     }
   };
 
-  // Get available models - try dynamic loading first, fallback to cache
-  const availableModels = dynamicModels.length > 0 
-    ? dynamicModels 
-    : (Array.isArray(vehicleAspects?.models) ? getModelsForMakeFromCache(vehicleAspects, selectedMake) : []);
+  // Get available models based on selected make
+  const availableModels = getModelsForMake(vehicleAspects, selectedMake);
 
-  // Handle make selection change with dynamic model loading
-  const handleMakeChange = async (make: string) => {
+  // Handle make selection change
+  const handleMakeChange = (make: string) => {
     setSelectedMake(make);
     setSelectedModel(''); // Reset model when make changes
     
-    if (make) {
-      setLoadingModels(true);
-      try {
-        // Try to get real-time models from eBay API first
-        console.log(`Attempting to load real-time models for ${make} from eBay...`);
-        const models = await getModelsForMake(make);
-        if (models.length > 0) {
-          setDynamicModels(models);
-          console.log(`Loaded ${models.length} real-time models for ${make} from eBay API`);
-        } else {
-          // Fallback to cached data if no models returned
-          const cachedModels = getModelsForMakeFromCache(vehicleAspects, make);
-          setDynamicModels(cachedModels);
-          console.log(`Using ${cachedModels.length} cached models for ${make} (no real-time data available)`);
-        }
-      } catch (error) {
-        console.error('Error loading models from eBay API:', error);
-        // Fallback to cached data on error
-        const cachedModels = getModelsForMakeFromCache(vehicleAspects, make);
-        setDynamicModels(cachedModels);
-        console.log(`Using ${cachedModels.length} cached models for ${make} due to API error`);
-      } finally {
-        setLoadingModels(false);
-      }
-    } else {
-      setDynamicModels([]);
+    // Log available models for debugging
+    const models = getModelsForMake(vehicleAspects, make);
+    console.log(`Selected make: ${make}, Available models: ${models.length}`);
+    if (models.length > 0) {
+      console.log('Sample models:', models.slice(0, 5).map(m => m.displayName));
     }
   };
 
@@ -154,24 +106,24 @@ const VehicleSearchForm = ({
     
     setIsLoading(true);
     
-    // Build CLEAN search query - much simpler approach
+    // Build search query with vehicle-specific terms to exclude toys/parts
     const queryParts = [];
     if (selectedMake) queryParts.push(selectedMake);
     if (selectedModel) queryParts.push(selectedModel);
     if (selectedYear) queryParts.push(selectedYear);
     
-    // Simple, clean query without excessive exclusions
+    // Add vehicle-specific terms to ensure we get actual vehicles
+    queryParts.push('vehicle', 'automobile', 'car', 'truck');
+    
     const query = queryParts.join(' ');
     
-    console.log('🚗 Vehicle search query:', query);
-    
-    // Build filters object with STRONG category enforcement
+    // Build filters object with enhanced vehicle filtering
     const filters: SearchFilters = {
-      category: 'motors', // This will force Cars & Trucks category (6001)
+      category: 'motors', // Cars & Trucks category
       conditionIds: condition,
       freeShipping,
       buyItNowOnly,
-      // Vehicle-specific filters - this is the key to getting actual vehicles
+      // Vehicle-specific filters
       vehicleAspects: {
         make: selectedMake,
         model: selectedModel,
@@ -184,38 +136,14 @@ const VehicleSearchForm = ({
         min: priceRange.min ? parseFloat(priceRange.min) : undefined,
         max: priceRange.max ? parseFloat(priceRange.max) : undefined,
         currency: 'USD'
-      } : undefined,
-      // Enhanced filters to ensure we get actual vehicles
-      searchInDescription: false, // Don't search descriptions to avoid parts/accessories
-      sellerAccountType: 'BUSINESS', // Prefer business sellers for actual vehicles
-      returnsAccepted: true // Actual vehicle sellers typically accept returns
+      } : undefined
     };
-    
-    console.log('🚗 Vehicle search filters:', filters);
     
     // Convert filters to URL-friendly format
     const filtersParam = encodeURIComponent(JSON.stringify(filters));
     
-    // Navigate to results page with the correct mode and preserve search state
-    const searchParams = new URLSearchParams({
-      mode,
-      q: query,
-      filters: filtersParam,
-      // Add vehicle search state to URL for back navigation
-      vehicleSearch: 'true',
-      make: selectedMake,
-      model: selectedModel,
-      year: selectedYear,
-      yearFrom: yearRange.from,
-      yearTo: yearRange.to,
-      priceMin: priceRange.min,
-      priceMax: priceRange.max,
-      condition: condition.join(','),
-      freeShipping: freeShipping.toString(),
-      buyItNowOnly: buyItNowOnly.toString()
-    });
-    
-    navigate(`/results?${searchParams.toString()}`);
+    // Navigate to results page with the correct mode
+    navigate(`/results?mode=${mode}&q=${encodeURIComponent(query)}&filters=${filtersParam}`);
     
     if (onSearch) {
       onSearch(query, filters);
@@ -283,8 +211,8 @@ const VehicleSearchForm = ({
               <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
               <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
                 {mode === 'buy' 
-                  ? 'Search for actual driveable vehicles in eBay\'s Cars & Trucks category. Results automatically exclude toys, models, parts, and accessories.'
-                  : 'Find completed sales of similar vehicles to help price your car or truck for sale. Only real vehicle sales data.'
+                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Results are filtered to exclude toys, models, and parts.'
+                  : 'Find completed sales of similar vehicles to help price your car or truck for sale.'
                 }
               </p>
             </div>
@@ -319,12 +247,12 @@ const VehicleSearchForm = ({
                 value={selectedMake}
                 onChange={(e) => handleMakeChange(e.target.value)}
                 disabled={loadingAspects || refreshingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 appearance-none"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Make</option>
-                {(vehicleAspects.makes || []).map((make) => (
+                {vehicleAspects.makes.map((make) => (
                   <option key={make.value} value={make.value}>
-                    {make.displayName}
+                    {make.displayName} ({make.count.toLocaleString()})
                   </option>
                 ))}
               </select>
@@ -341,29 +269,15 @@ const VehicleSearchForm = ({
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={!selectedMake || loadingModels}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed appearance-none"
+                disabled={loadingAspects || refreshingAspects}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
-                <option value="">
-                  {!selectedMake 
-                    ? 'Select a make first' 
-                    : loadingModels 
-                    ? 'Loading models...' 
-                    : 'All Models'
-                  }
-                </option>
-                {(availableModels || []).map((model) => (
-                  <option key={model.value} value={model.value}>
-                    {model.displayName}
-                    {model.make && model.make !== selectedMake ? ` (${model.make})` : ''}
+                <option value="">Any Model</option>
+                {availableModels.map((model) => (
+                  <option key={`${model.value}-${model.make || 'generic'}`} value={model.value}>
+                    {model.displayName} ({model.count.toLocaleString()})
                   </option>
                 ))}
-                
-                {availableModels.length === 0 && selectedMake && !loadingModels && (
-                  <option value="" disabled>
-                    No models found for {selectedMake}
-                  </option>
-                )}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
             </div>
@@ -389,12 +303,12 @@ const VehicleSearchForm = ({
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
                 disabled={loadingAspects || refreshingAspects}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:opacity-50 appearance-none"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Year</option>
-                {(vehicleAspects.years || []).map((year) => (
+                {vehicleAspects.years.map((year) => (
                   <option key={year.value} value={year.value}>
-                    {year.displayName}
+                    {year.displayName} ({year.count.toLocaleString()})
                   </option>
                 ))}
               </select>

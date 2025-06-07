@@ -131,8 +131,8 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
     }
   };
 
-  // Sort items with safe array handling
-  const sortedItems = Array.isArray(items) ? [...items].sort((a, b) => {
+  // Sort items
+  const sortedItems = [...items].sort((a, b) => {
     if (sortField === 'price') {
       const aPrice = a.price?.value || 0;
       const bPrice = b.price?.value || 0;
@@ -142,7 +142,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
       const bShipping = b.shippingOptions?.[0]?.shippingCost?.value || 0;
       return sortDirection === 'asc' ? aShipping - bShipping : bShipping - aShipping;
     }
-  }) : [];
+  });
 
   if (isLoading) {
     return (
@@ -153,7 +153,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
     );
   }
 
-  if (!Array.isArray(items) || items.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="text-center py-12">
         <p className="text-gray-600 dark:text-gray-400 text-lg">No results found. Try a different search.</p>

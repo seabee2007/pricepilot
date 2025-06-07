@@ -7,18 +7,6 @@ import { SearchMode } from '../types';
 const HomePage = () => {
   const [activeMode, setActiveMode] = useState<SearchMode>('buy');
   const [showVehicleSearch, setShowVehicleSearch] = useState(false);
-  
-  // State to preserve vehicle search inputs when returning from results
-  const [vehicleSearchState, setVehicleSearchState] = useState({
-    make: '',
-    model: '',
-    year: '',
-    yearRange: { from: '', to: '' },
-    priceRange: { min: '', max: '' },
-    condition: [] as number[],
-    freeShipping: false,
-    buyItNowOnly: false
-  });
 
   const handleCategoryChange = (category: string) => {
     setShowVehicleSearch(category === 'motors');
@@ -27,40 +15,6 @@ const HomePage = () => {
   const handleBackToGeneral = () => {
     setShowVehicleSearch(false);
   };
-
-  // Function to restore vehicle search state from URL parameters
-  const restoreVehicleSearchFromURL = () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    
-    if (urlParams.get('vehicleSearch') === 'true') {
-      setShowVehicleSearch(true);
-      setVehicleSearchState({
-        make: urlParams.get('make') || '',
-        model: urlParams.get('model') || '',
-        year: urlParams.get('year') || '',
-        yearRange: {
-          from: urlParams.get('yearFrom') || '',
-          to: urlParams.get('yearTo') || ''
-        },
-        priceRange: {
-          min: urlParams.get('priceMin') || '',
-          max: urlParams.get('priceMax') || ''
-        },
-        condition: urlParams.get('condition') ? 
-          urlParams.get('condition')!.split(',').map(Number).filter(n => !isNaN(n)) : [],
-        freeShipping: urlParams.get('freeShipping') === 'true',
-        buyItNowOnly: urlParams.get('buyItNowOnly') === 'true'
-      });
-      
-      // Clear URL parameters after restoring state
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  };
-
-  // Check for vehicle search restoration on component mount
-  useState(() => {
-    restoreVehicleSearchFromURL();
-  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
@@ -130,15 +84,6 @@ const HomePage = () => {
           <VehicleSearchForm 
             mode={activeMode}
             onBack={handleBackToGeneral}
-            // Pass preserved state to restore user inputs
-            initialMake={vehicleSearchState.make}
-            initialModel={vehicleSearchState.model}
-            initialYear={vehicleSearchState.year}
-            initialYearRange={vehicleSearchState.yearRange}
-            initialPriceRange={vehicleSearchState.priceRange}
-            initialCondition={vehicleSearchState.condition}
-            initialFreeShipping={vehicleSearchState.freeShipping}
-            initialBuyItNowOnly={vehicleSearchState.buyItNowOnly}
           />
         ) : (
           <>

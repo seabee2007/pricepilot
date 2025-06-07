@@ -17,15 +17,13 @@ async function getOAuthToken(): Promise<string> {
   const oauthToken = Deno.env.get('EBAY_OAUTH_TOKEN');
   
   if (oauthToken) {
-    console.log('Using stored OAuth application token');
+    console.log('Using OAuth application token');
     return oauthToken;
   }
 
-  console.log('No stored OAuth token found, using client credentials flow...');
-
   // Fallback to client credentials flow
+  // If token exists and is still valid, return it
   if (tokenCache && tokenCache.expires_at > Date.now()) {
-    console.log('Using cached client credentials token');
     return tokenCache.access_token;
   }
 
@@ -33,18 +31,17 @@ async function getOAuthToken(): Promise<string> {
   const clientSecret = Deno.env.get('EBAY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    throw new Error('Missing eBay API credentials (EBAY_CLIENT_ID or EBAY_CLIENT_SECRET)');
+    throw new Error('Missing eBay API credentials (EBAY_OAUTH_TOKEN or EBAY_CLIENT_ID/EBAY_CLIENT_SECRET)');
   }
 
   const credentials = btoa(`${clientId}:${clientSecret}`);
 
   try {
+    // Use sandbox OAuth endpoint for sandbox credentials
     const oauthUrl = clientId.includes('SBX') 
       ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
       : 'https://api.ebay.com/identity/v1/oauth2/token';
       
-    console.log(`Requesting fresh OAuth token from: ${oauthUrl}`);
-    
     const response = await fetch(oauthUrl, {
       method: 'POST',
       headers: {
@@ -56,22 +53,22 @@ async function getOAuthToken(): Promise<string> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OAuth error response:', errorText);
+      console.error('eBay OAuth response:', errorText);
       throw new Error(`eBay OAuth error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('Successfully obtained new OAuth token');
     
+    // Cache the token with expiration
     tokenCache = {
       access_token: data.access_token,
-      expires_at: Date.now() + (data.expires_in * 1000 * 0.9), // Use 90% of lifetime for safety
+      expires_at: Date.now() + (data.expires_in * 1000 * 0.9), // 90% of actual expiry time for safety
     };
 
     return data.access_token;
   } catch (error) {
     console.error('Error fetching eBay OAuth token:', error);
-    throw new Error(`Failed to obtain OAuth token: ${error.message}. Please check your eBay API credentials.`);
+    throw error;
   }
 }
 
@@ -207,16 +204,26 @@ function getCategoryId(category: string): string | null {
   return categoryMap[category] || null;
 }
 
-// SIMPLIFIED query processing for automotive searches - MUCH cleaner approach
+// Enhanced query processing for automotive searches with stronger exclusions
 function enhanceQueryForCategory(query: string, category: string): string {
-  // Only enhance queries for motors category
+  // For motors category, add strong exclusions to filter out toys, models, and parts
   if (category === 'motors') {
-    // Don't add generic terms - let the category filter (6001) do the work
-    // This prevents over-filtering and allows for better model-specific searches
-    return query;
+    const exclusions = [
+      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast',
+      '-matchbox', '-hotwheels', '-hot-wheels', '-miniature', '-scale',
+      '-parts', '-part', '-accessory', '-accessories', '-component',
+      '-keychain', '-poster', '-manual', '-book', '-shirt', '-decal', 
+      '-sticker', '-emblem', '-badge', '-collectible', '-memorabilia',
+      '-remote', '-control', '-rc', '-plastic', '-metal', '-replica',
+      '-figurine', '-action', '-figure'
+    ].join(' ');
+    
+    // Add positive terms to reinforce we want actual vehicles
+    const positiveTerms = 'automobile motor vehicle transportation';
+    
+    return `${query} ${positiveTerms} ${exclusions}`;
   }
   
-  // For all other categories, return query unchanged
   return query;
 }
 
@@ -256,8 +263,7 @@ function buildAspectFilter(vehicleAspects: any): string {
     }
   }
   
-  // Don't include categoryId in aspect filter - it's handled separately
-  return aspectParts.join(',');
+  return aspectParts.length > 0 ? `categoryId:6001,${aspectParts.join(',')}` : '';
 }
 
 function buildCompatibilityFilter(compatibility: any): string {
@@ -409,6 +415,8 @@ Deno.serve(async (req) => {
 
     const token = await getOAuthToken();
     const filterString = buildFilterString(filters);
+    const compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
+    const aspectFilter = buildAspectFilter(filters.vehicleAspects);
     
     // Choose endpoint based on mode and environment (sandbox vs production)
     const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
@@ -422,53 +430,34 @@ Deno.serve(async (req) => {
     
     const searchUrl = new URL(baseUrl);
     
-    // Enhance query for specific categories (much simpler now)
+    // Enhance query for specific categories (especially motors to exclude toys/parts)
     const enhancedQuery = enhanceQueryForCategory(query.trim(), filters.category);
-    
-    console.log('🔍 Enhanced query:', enhancedQuery);
-    console.log('🏷️ Category:', filters.category);
-    console.log('🚗 Vehicle aspects:', filters.vehicleAspects);
-    console.log('🔧 Filter string:', filterString);
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
     searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
-    // CRITICAL: Force category filter for motors to ensure we stay in Cars & Trucks
-    if (filters.category === 'motors') {
-      searchUrl.searchParams.append('category_ids', '6001'); // Cars & Trucks category
-      console.log('🚗 FORCED category filter for motors: 6001 (Cars & Trucks)');
-      
-      // For vehicle searches, keep it simple - just use basic filters
-      const vehicleFilters = [];
-      
-      // Add the existing filter string
-      if (filterString) {
-        vehicleFilters.push(filterString);
-      }
-      
-      // Simple location filter to focus on US vehicles
-      vehicleFilters.push('itemLocationCountry:US');
-      
-      // Combine all filters
-      if (vehicleFilters.length > 0) {
-        searchUrl.searchParams.set('filter', vehicleFilters.join(','));
-      }
-      
-    } else if (filters.category && filters.category !== 'all') {
+    // Add category filter if specified and not "all"
+    if (filters.category && filters.category !== 'all') {
       const categoryId = getCategoryId(filters.category);
       if (categoryId) {
         searchUrl.searchParams.append('category_ids', categoryId);
         console.log(`Applied category filter: ${filters.category} -> ${categoryId}`);
       }
-      
-      if (filterString) {
-        searchUrl.searchParams.append('filter', filterString);
-      }
-    } else {
-      if (filterString) {
-        searchUrl.searchParams.append('filter', filterString);
-      }
+    }
+    
+    if (filterString) {
+      searchUrl.searchParams.append('filter', filterString);
+    }
+    
+    if (compatibilityFilter) {
+      searchUrl.searchParams.append('compatibility_filter', compatibilityFilter);
+    }
+    
+    // Add aspect filter for vehicle searches
+    if (aspectFilter) {
+      searchUrl.searchParams.append('aspect_filter', aspectFilter);
+      console.log(`Applied aspect filter: ${aspectFilter}`);
     }
     
     if (filters.postalCode) {
@@ -483,7 +472,7 @@ Deno.serve(async (req) => {
       searchUrl.searchParams.append('offset', pageOffset.toString());
     }
 
-    console.log('🌐 eBay API Request URL:', searchUrl.toString());
+    console.log('eBay API Request URL:', searchUrl.toString());
 
     const response = await fetch(searchUrl.toString(), {
       headers: {
@@ -500,7 +489,7 @@ Deno.serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log('✅ eBay API Response received. Items found:', data.itemSummaries?.length || 0);
+    console.log('eBay API Response:', JSON.stringify(data, null, 2));
 
     // Process items to include compatibility information and normalize data types
     const processedItems = (data.itemSummaries || []).map((item: any) => ({
@@ -532,8 +521,6 @@ Deno.serve(async (req) => {
         compatibilityProperties: item.compatibilityProperties || []
       } : undefined
     }));
-
-    console.log(`📊 Processed ${processedItems.length} items for return`);
 
     return new Response(
       JSON.stringify({ 
