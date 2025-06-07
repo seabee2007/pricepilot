@@ -82,11 +82,22 @@ function getCategoryId(category: string): string | null {
     'toys': '220',
     'business': '12576',
     'jewelry': '281',
-    'motors': '6028', // eBay Motors - this is key for automotive searches
+    'motors': '6001', // Cars & Trucks - this is the specific category for actual vehicles
     'collectibles': '1'
   };
   
   return categoryMap[category] || null;
+}
+
+// Enhanced query processing for automotive searches
+function enhanceQueryForCategory(query: string, category: string): string {
+  // For motors category, add exclusions to filter out toys and parts
+  if (category === 'motors') {
+    const exclusions = '-toy -toys -model -diecast -matchbox -hotwheels -parts -part -accessory -accessories -keychain -poster -manual -book -shirt -decal -sticker';
+    return `${query} ${exclusions}`;
+  }
+  
+  return query;
 }
 
 function buildFilterString(filters: any): string {
@@ -367,8 +378,11 @@ Deno.serve(async (req) => {
     
     const searchUrl = new URL(baseUrl);
     
+    // Enhance query for specific categories (especially motors to exclude toys/parts)
+    const enhancedQuery = enhanceQueryForCategory(query.trim(), filters.category);
+    
     // Ensure query is properly URL encoded
-    searchUrl.searchParams.append('q', query.trim());
+    searchUrl.searchParams.append('q', enhancedQuery);
     searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
     // Add category filter if specified and not "all"
