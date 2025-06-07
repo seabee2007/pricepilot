@@ -30,26 +30,31 @@ export interface VehicleAspects {
   years: VehicleAspect[];
 }
 
-// Cache for vehicle aspects
-let aspectsCache: VehicleAspects | null = null;
-let cacheTimestamp: number = 0;
+// Cache for vehicle aspects with filter keys
+const aspectsCache = new Map<string, { data: VehicleAspects; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes for real-time data
 
-export async function getVehicleAspects(): Promise<VehicleAspects> {
-  console.log('🚀 [getVehicleAspects] Starting vehicle aspects fetch...');
+// Generate cache key from filters
+function getCacheKey(make?: string, model?: string): string {
+  return `${make || 'no-make'}-${model || 'no-model'}`;
+}
+
+// Enhanced cascading vehicle aspects function
+export async function getVehicleAspects(make?: string, model?: string): Promise<VehicleAspects> {
+  console.log('🚀 [getVehicleAspects] Starting cascading vehicle aspects fetch...', { make, model });
+  
+  const cacheKey = getCacheKey(make, model);
+  const cached = aspectsCache.get(cacheKey);
   
   // Return cached data if still valid
-  if (aspectsCache && Date.now() - cacheTimestamp < CACHE_DURATION) {
-    console.log('📋 [getVehicleAspects] Returning cached vehicle aspects');
-    console.log('   - Cache age:', Math.round((Date.now() - cacheTimestamp) / 1000), 'seconds');
-    return aspectsCache;
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log('📋 [getVehicleAspects] Returning cached vehicle aspects for:', cacheKey);
+    console.log('   - Cache age:', Math.round((Date.now() - cached.timestamp) / 1000), 'seconds');
+    return cached.data;
   }
 
   try {
-    console.log('🔄 [getVehicleAspects] Cache expired/empty, fetching fresh data...');
-    console.log('   - Cache timestamp:', cacheTimestamp);
-    console.log('   - Current time:', Date.now());
-    console.log('   - Cache duration:', CACHE_DURATION);
+    console.log('🔄 [getVehicleAspects] Cache expired/empty, fetching fresh data for:', cacheKey);
     
     console.log('🔐 [getVehicleAspects] Getting Supabase session...');
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -70,12 +75,25 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
     console.log('   - User ID:', session.user?.id);
     console.log('   - Token prefix:', session.access_token.slice(0, 20), '...');
     
+    // Build query parameters for cascading filters
+    const params = new URLSearchParams();
+    if (make) {
+      params.append('make', make);
+      console.log(`   - Added make filter: "${make}"`);
+    }
+    if (model) {
+      params.append('model', model);
+      console.log(`   - Added model filter: "${model}"`);
+    }
+    
     const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-vehicle-aspects`;
-    console.log('🌐 [getVehicleAspects] Making request to:', functionUrl);
+    const fullUrl = params.toString() ? `${functionUrl}?${params.toString()}` : functionUrl;
+    
+    console.log('🌐 [getVehicleAspects] Making cascading request to:', fullUrl);
     console.log('   - Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
     console.log('   - Anon key prefix:', import.meta.env.VITE_SUPABASE_ANON_KEY?.slice(0, 20), '...');
 
-    const response = await fetch(functionUrl, {
+    const response = await fetch(fullUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -107,6 +125,15 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
     console.log('   - Models count:', data.models?.length || 0);
     console.log('   - Years count:', data.years?.length || 0);
     
+    // Log what we're getting back based on current filter state
+    if (!make && !model) {
+      console.log('📊 [getVehicleAspects] Initial load - all aspects available');
+    } else if (make && !model) {
+      console.log(`📊 [getVehicleAspects] Filtered by make "${make}" - models available`);
+    } else if (make && model) {
+      console.log(`📊 [getVehicleAspects] Filtered by make "${make}" and model "${model}" - years available`);
+    }
+    
     // Log sample data for debugging
     if (data.makes?.length > 0) {
       console.log('   - Sample makes:', data.makes.slice(0, 3).map((m: any) => `${m.displayName}(${m.count})`));
@@ -114,45 +141,50 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
     if (data.models?.length > 0) {
       console.log('   - Sample models:', data.models.slice(0, 3).map((m: any) => `${m.displayName}(${m.count})`));
     }
+    if (data.years?.length > 0) {
+      console.log('   - Sample years:', data.years.slice(0, 3).map((y: any) => `${y.displayName}(${y.count})`));
+    }
     
     // Validate the data structure
-    if (!data.makes || !data.models || !data.years) {
-      console.error('❌ [getVehicleAspects] Invalid data structure:', {
+    if (!data.makes && !data.models && !data.years) {
+      console.error('❌ [getVehicleAspects] No vehicle data returned:', {
         makesExists: !!data.makes,
         modelsExists: !!data.models, 
         yearsExists: !!data.years,
         dataKeys: Object.keys(data)
       });
-      throw new Error('Invalid vehicle aspects data structure');
+      throw new Error('No vehicle aspects data returned from API');
     }
     
-    console.log('🔍 [getVehicleAspects] Filtering data (removing zero counts)...');
-    // Filter out any items with zero counts
+    console.log('🔍 [getVehicleAspects] Processing cascading response data...');
+    // Ensure we always have arrays for the structure
     const filteredData = {
-      makes: data.makes.filter((make: VehicleAspect) => make.count > 0),
-      models: data.models.filter((model: VehicleAspect) => model.count > 0),
-      years: data.years.filter((year: VehicleAspect) => year.count > 0)
+      makes: data.makes || [],
+      models: data.models || [],
+      years: data.years || []
     };
     
-    console.log('✅ [getVehicleAspects] Data filtered successfully:');
-    console.log('   - Makes: before', data.makes.length, 'after', filteredData.makes.length);
-    console.log('   - Models: before', data.models.length, 'after', filteredData.models.length);
-    console.log('   - Years: before', data.years.length, 'after', filteredData.years.length);
+    console.log('✅ [getVehicleAspects] Cascading data processed successfully:');
+    console.log('   - Makes:', filteredData.makes.length);
+    console.log('   - Models:', filteredData.models.length); 
+    console.log('   - Years:', filteredData.years.length);
     
-    // Cache the results
-    console.log('💾 [getVehicleAspects] Caching results...');
-    aspectsCache = filteredData;
-    cacheTimestamp = Date.now();
-    console.log('   - Cache timestamp set to:', cacheTimestamp);
+    // Cache the results with filter-specific key
+    console.log('💾 [getVehicleAspects] Caching results for key:', cacheKey);
+    aspectsCache.set(cacheKey, {
+      data: filteredData,
+      timestamp: Date.now()
+    });
     
-    console.log('🎉 [getVehicleAspects] Success! Returning filtered data');
+    console.log('🎉 [getVehicleAspects] Success! Returning cascading data');
     return filteredData;
   } catch (error) {
-    console.error('💥 [getVehicleAspects] Error in getVehicleAspects:', {
+    console.error('💥 [getVehicleAspects] Error in cascading getVehicleAspects:', {
       errorType: error?.constructor?.name,
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
       errorStack: error instanceof Error ? error.stack : undefined,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      filters: { make, model }
     });
     
     // Throw the error instead of using fallback data
@@ -160,56 +192,81 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
   }
 }
 
-// Get models for a specific make
-export function getModelsForMake(vehicleAspects: VehicleAspects, make: string): VehicleAspect[] {
-  console.log(`🔍 [getModelsForMake] Getting models for make: "${make}"`);
-  console.log('   - Input aspects:', {
-    makes: vehicleAspects.makes.length,
-    models: vehicleAspects.models.length,
-    years: vehicleAspects.years.length
-  });
+// Get models for a specific make (now uses cascading API)
+export async function getModelsForMake(make: string): Promise<VehicleAspect[]> {
+  console.log(`🔍 [getModelsForMake] Getting models for make: "${make}" via cascading API`);
   
   if (!make) {
-    console.log('   - No make specified, returning all models');
-    return vehicleAspects.models;
+    console.log('   - No make specified, returning empty array');
+    return [];
   }
   
-  // Filter models that are associated with the selected make (ONLY real eBay data)
-  const makeModels = vehicleAspects.models.filter(model => 
-    model.make === make
-  );
+  try {
+    // Use the cascading API to get models for the specific make
+    const vehicleAspects = await getVehicleAspects(make);
+    const models = vehicleAspects.models;
+    
+    console.log(`✅ [getModelsForMake] Found ${models.length} models for make: ${make} (via cascading API)`);
+    
+    if (models.length > 0) {
+      console.log('   - Sample models:', models.slice(0, 3).map(m => `${m.displayName}(${m.count})`));
+    }
+    
+    return models;
+  } catch (error) {
+    console.error(`❌ [getModelsForMake] Error getting models for make ${make}:`, error);
+    throw error;
+  }
+}
+
+// Get years for a specific make and model (now uses cascading API)
+export async function getYearsForMakeModel(make: string, model: string): Promise<VehicleAspect[]> {
+  console.log(`🔍 [getYearsForMakeModel] Getting years for make: "${make}", model: "${model}" via cascading API`);
   
-  console.log(`✅ [getModelsForMake] Found ${makeModels.length} models for make: ${make} (eBay data only)`);
-  
-  if (makeModels.length > 0) {
-    console.log('   - Sample models:', makeModels.slice(0, 3).map(m => `${m.displayName}(${m.count})`));
-  } else {
-    console.log('   - Available makes in data:', vehicleAspects.makes.slice(0, 5).map(m => m.value));
-    console.log('   - Models with makes:', vehicleAspects.models.filter(m => m.make).slice(0, 5).map(m => `${m.displayName}(${m.make})`));
+  if (!make || !model) {
+    console.log('   - Make or model not specified, returning empty array');
+    return [];
   }
   
-  return makeModels;
+  try {
+    // Use the cascading API to get years for the specific make+model
+    const vehicleAspects = await getVehicleAspects(make, model);
+    const years = vehicleAspects.years;
+    
+    console.log(`✅ [getYearsForMakeModel] Found ${years.length} years for ${make} ${model} (via cascading API)`);
+    
+    if (years.length > 0) {
+      console.log('   - Sample years:', years.slice(0, 3).map(y => `${y.displayName}(${y.count})`));
+    }
+    
+    return years;
+  } catch (error) {
+    console.error(`❌ [getYearsForMakeModel] Error getting years for ${make} ${model}:`, error);
+    throw error;
+  }
 }
 
 // Clear the cache
 export function clearVehicleAspectsCache(): void {
   console.log('🗑️ [clearVehicleAspectsCache] Clearing vehicle aspects cache');
-  console.log('   - Previous cache timestamp:', cacheTimestamp);
-  console.log('   - Previous cache data exists:', !!aspectsCache);
+  console.log('   - Previous cache size:', aspectsCache.size);
   
-  aspectsCache = null;
-  cacheTimestamp = 0;
+  aspectsCache.clear();
   
   console.log('✅ [clearVehicleAspectsCache] Vehicle aspects cache cleared');
 }
 
-// Force refresh the cache
-export async function refreshVehicleAspects(): Promise<VehicleAspects> {
-  console.log('🔄 [refreshVehicleAspects] Force refreshing vehicle aspects...');
-  clearVehicleAspectsCache();
+// Force refresh the cache for specific filters
+export async function refreshVehicleAspects(make?: string, model?: string): Promise<VehicleAspects> {
+  console.log('🔄 [refreshVehicleAspects] Force refreshing vehicle aspects...', { make, model });
+  
+  // Clear cache entry for this specific filter combination
+  const cacheKey = getCacheKey(make, model);
+  aspectsCache.delete(cacheKey);
+  console.log('   - Cleared cache for key:', cacheKey);
   
   try {
-    const result = await getVehicleAspects();
+    const result = await getVehicleAspects(make, model);
     console.log('✅ [refreshVehicleAspects] Refresh completed successfully');
     return result;
   } catch (error) {

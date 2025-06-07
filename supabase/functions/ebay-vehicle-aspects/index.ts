@@ -667,6 +667,194 @@ function extractVehicleAspects(data: any): any {
   };
 }
 
+// Enhanced cascading vehicle search with make/model filtering
+async function fetchVehicleAspects(token: string, make?: string, model?: string): Promise<any> {
+  console.log(`🔍 Fetching vehicle aspects with filters:`, { make, model });
+  
+  // Build the base URL
+  const baseUrl = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
+  const url = new URL(baseUrl);
+  
+  // Always include these parameters
+  url.searchParams.append('category_ids', '6001'); // Cars & Trucks category
+  url.searchParams.append('fieldgroups', 'ASPECT_REFINEMENTS');
+  
+  // Build aspect_filter string for progressive filtering
+  const aspectParts = ['categoryId:6001'];
+  if (make) {
+    aspectParts.push(`Make:{${make}}`);
+    console.log(`  - Filtering by make: "${make}"`);
+  }
+  if (model) {
+    aspectParts.push(`Model:{${model}}`);
+    console.log(`  - Filtering by model: "${model}"`);
+  }
+  
+  if (aspectParts.length > 1) {
+    url.searchParams.append('aspect_filter', aspectParts.join(','));
+  }
+
+  console.log('🌐 API Request URL:', url.toString());
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    console.log('📨 Response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
+      throw new Error(`eBay API error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    console.log('✅ API call successful!');
+    console.log('📊 Total items found:', data.total);
+    console.log('📊 Refinement exists:', !!data.refinement);
+    console.log('📊 Aspects count:', data.refinement?.aspectDistributions?.length || 0);
+
+    return data;
+  } catch (error) {
+    console.error('❌ Error in fetchVehicleAspects:', error);
+    throw error;
+  }
+}
+
+// Extract specific aspects based on current selection state
+function extractFilteredAspects(data: any, make?: string, model?: string): any {
+  console.log(`🔍 Extracting aspects for current state:`, { make, model });
+  
+  if (!data.refinement?.aspectDistributions) {
+    console.log('⚠️ No aspect distributions found in response');
+    return { makes: [], models: [], years: [] };
+  }
+
+  const aspectDistributions = data.refinement.aspectDistributions;
+  console.log('📊 Available aspects:', aspectDistributions.map((a: any) => a.localizedAspectName));
+
+  const result: any = {};
+
+  // Always try to extract what's available
+  aspectDistributions.forEach((aspect: any) => {
+    const aspectName = aspect.localizedAspectName;
+    const values = aspect.aspectValueDistributions || [];
+    
+    if (aspectName === 'Make' && !make) {
+      // Only return makes if we haven't selected one yet
+      result.makes = values
+        .filter((v: any) => v.matchCount > 0)
+        .map((v: any) => ({
+          value: v.localizedAspectValue,
+          displayName: v.localizedAspectValue,
+          count: v.matchCount
+        }))
+        .sort((a: any, b: any) => b.count - a.count)
+        .slice(0, 25);
+      
+      console.log(`✅ Extracted ${result.makes.length} makes`);
+    }
+    
+    if (aspectName === 'Model' && make && !model) {
+      // Only return models if we have a make but no model yet
+      result.models = values
+        .filter((v: any) => v.matchCount > 0)
+        .map((v: any) => ({
+          value: v.localizedAspectValue,
+          displayName: v.localizedAspectValue,
+          count: v.matchCount,
+          make: make
+        }))
+        .sort((a: any, b: any) => b.count - a.count)
+        .slice(0, 100);
+      
+      console.log(`✅ Extracted ${result.models.length} models for make: ${make}`);
+    }
+    
+    if (aspectName === 'Model Year' && make && model) {
+      // Only return years if we have both make and model
+      result.years = values
+        .filter((v: any) => v.matchCount > 0)
+        .map((v: any) => ({
+          value: v.localizedAspectValue,
+          displayName: v.localizedAspectValue,
+          count: v.matchCount
+        }))
+        .sort((a: any, b: any) => {
+          const yearA = parseInt(a.value);
+          const yearB = parseInt(b.value);
+          if (!isNaN(yearA) && !isNaN(yearB)) {
+            return yearB - yearA; // Newest first
+          }
+          return b.count - a.count;
+        })
+        .slice(0, 50);
+      
+      console.log(`✅ Extracted ${result.years.length} years for ${make} ${model}`);
+    }
+  });
+
+  // For initial load (no filters), get all three types
+  if (!make && !model) {
+    aspectDistributions.forEach((aspect: any) => {
+      const aspectName = aspect.localizedAspectName;
+      const values = aspect.aspectValueDistributions || [];
+      
+      if (aspectName === 'Model' && !result.models) {
+        result.models = values
+          .filter((v: any) => v.matchCount > 0)
+          .map((v: any) => ({
+            value: v.localizedAspectValue,
+            displayName: v.localizedAspectValue,
+            count: v.matchCount,
+            make: 'generic'
+          }))
+          .sort((a: any, b: any) => b.count - a.count)
+          .slice(0, 100);
+        
+        console.log(`✅ Extracted ${result.models.length} generic models for initial load`);
+      }
+      
+      if (aspectName === 'Model Year' && !result.years) {
+        result.years = values
+          .filter((v: any) => v.matchCount > 0)
+          .map((v: any) => ({
+            value: v.localizedAspectValue,
+            displayName: v.localizedAspectValue,
+            count: v.matchCount
+          }))
+          .sort((a: any, b: any) => {
+            const yearA = parseInt(a.value);
+            const yearB = parseInt(b.value);
+            if (!isNaN(yearA) && !isNaN(yearB)) {
+              return yearB - yearA; // Newest first
+            }
+            return b.count - a.count;
+          })
+          .slice(0, 50);
+        
+        console.log(`✅ Extracted ${result.years.length} generic years for initial load`);
+      }
+    });
+  }
+
+  // Ensure we always return the expected structure
+  return {
+    makes: result.makes || [],
+    models: result.models || [],
+    years: result.years || []
+  };
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests FIRST
   if (req.method === 'OPTIONS') {
@@ -678,6 +866,13 @@ Deno.serve(async (req) => {
 
   try {
     console.log(`🚀 Received ${req.method} request to ebay-vehicle-aspects function`);
+
+    // Parse query parameters for cascading filters
+    const url = new URL(req.url);
+    const make = url.searchParams.get('make');
+    const model = url.searchParams.get('model');
+    
+    console.log('🎯 Request filters:', { make, model });
 
     // Initialize Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -708,22 +903,17 @@ Deno.serve(async (req) => {
 
     console.log('✅ User authenticated:', user.id);
 
-    // Get OAuth token and test the EXACT same call as curl
+    // Get OAuth token and fetch filtered vehicle data
     console.log('🔑 Getting OAuth token...');
     const token = await getOAuthToken();
     
-    console.log('🧪 Testing exact same API call as the working curl command...');
-    const rawData = await testExactCurlCall(token);
+    console.log('🧪 Fetching vehicle aspects with progressive filtering...');
+    const rawData = await fetchVehicleAspects(token, make || undefined, model || undefined);
     
-    console.log('🔄 Extracting vehicle aspects...');
-    const vehicleData = extractVehicleAspects(rawData);
+    console.log('🔄 Extracting filtered vehicle aspects...');
+    const vehicleData = extractFilteredAspects(rawData, make || undefined, model || undefined);
     
-    console.log('🎉 Success! Returning vehicle data...');
-
-    // Ensure we have valid data
-    if (!vehicleData.makes || vehicleData.makes.length === 0) {
-      throw new Error('No vehicle data found from eBay API');
-    }
+    console.log('🎉 Success! Returning filtered vehicle data...');
 
     console.log(`✅ Returning: ${vehicleData.makes.length} makes, ${vehicleData.models.length} models, ${vehicleData.years.length} years`);
 
