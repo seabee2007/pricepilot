@@ -70,6 +70,9 @@ export interface SearchFilters {
   // Automotive compatibility filters
   compatibilityFilter?: VehicleCompatibility;
   
+  // Direct aspect filter string (for ASPECT_REFINEMENTS and vehicle searches)
+  aspectFilter?: string;
+  
   // Vehicle-specific aspects for Cars & Trucks category
   vehicleAspects?: {
     make?: string;

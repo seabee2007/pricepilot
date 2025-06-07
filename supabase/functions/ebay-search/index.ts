@@ -230,7 +230,7 @@ function enhanceQueryForCategory(query: string, category: string): string {
 function buildAspectFilter(vehicleAspects: any, conditionIds: number[] = []): string {
   if (!vehicleAspects) return '';
   
-  const aspectParts: string[] = ['categoryId:6001']; // Always include category
+  const aspectParts: string[] = []; // Remove categoryId since we use category_ids parameter
   
   // Add condition distributions in Sample 6 format if specified
   if (conditionIds && conditionIds.length > 0) {
@@ -248,7 +248,7 @@ function buildAspectFilter(vehicleAspects: any, conditionIds: number[] = []): st
     aspectParts.push(`conditionDistributions:{${conditionNames.join('|')}}`);
   }
   
-  // Build aspect filters for vehicle search using the correct eBay format
+  // Build aspect filters for vehicle search using PIPE separators (correct vehicle format)
   if (vehicleAspects.make) {
     aspectParts.push(`Make:{${vehicleAspects.make}}`);
   }
@@ -295,7 +295,8 @@ function buildAspectFilter(vehicleAspects: any, conditionIds: number[] = []): st
     aspectParts.push(`Transmission:{${vehicleAspects.transmission}}`);
   }
   
-  return aspectParts.join(',');
+  // Use PIPE separators for vehicle aspects (correct format)
+  return aspectParts.join('|');
 }
 
 function buildCompatibilityFilter(compatibility: any): string {
