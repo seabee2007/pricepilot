@@ -12,6 +12,10 @@ const HomePage = () => {
     setShowVehicleSearch(category === 'motors');
   };
 
+  const handleBackToGeneral = () => {
+    setShowVehicleSearch(false);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
       <div className="text-center mb-12">
@@ -25,7 +29,7 @@ const HomePage = () => {
         </p>
       </div>
 
-      {/* Mode Tabs */}
+      {/* Mode Tabs - Always visible */}
       <div className="flex justify-center mb-8">
         <div className="inline-flex rounded-md shadow-sm" role="group">
           <button
@@ -77,7 +81,10 @@ const HomePage = () => {
       {/* Search Form */}
       <div className="max-w-4xl mx-auto">
         {showVehicleSearch ? (
-          <VehicleSearchForm />
+          <VehicleSearchForm 
+            mode={activeMode}
+            onBack={handleBackToGeneral}
+          />
         ) : (
           <>
             <div className={`rounded-t-lg ${activeMode === 'buy' ? 'bg-blue-800 dark:bg-blue-700' : 'bg-green-800 dark:bg-green-700'} p-4 text-white text-center`}>

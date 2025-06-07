@@ -3,16 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { Car, Search, ChevronDown, Loader2, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
-import { SearchFilters } from '../types';
+import { SearchFilters, SearchMode } from '../types';
 import { getVehicleAspects, VehicleAspects } from '../lib/ebay-vehicle';
 import toast from 'react-hot-toast';
 
 interface VehicleSearchFormProps {
+  mode: SearchMode;
   onSearch?: (query: string, filters: SearchFilters) => void;
   onBack?: () => void;
 }
 
-const VehicleSearchForm = ({ onSearch, onBack }: VehicleSearchFormProps) => {
+const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingAspects, setLoadingAspects] = useState(false);
@@ -104,8 +105,8 @@ const VehicleSearchForm = ({ onSearch, onBack }: VehicleSearchFormProps) => {
     // Convert filters to URL-friendly format
     const filtersParam = encodeURIComponent(JSON.stringify(filters));
     
-    // Navigate to results page
-    navigate(`/results?mode=buy&q=${encodeURIComponent(query)}&filters=${filtersParam}`);
+    // Navigate to results page with the correct mode
+    navigate(`/results?mode=${mode}&q=${encodeURIComponent(query)}&filters=${filtersParam}`);
     
     if (onSearch) {
       onSearch(query, filters);
@@ -139,42 +140,45 @@ const VehicleSearchForm = ({ onSearch, onBack }: VehicleSearchFormProps) => {
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      {/* Header with back button */}
-      <div className="bg-blue-800 dark:bg-blue-700 p-4 text-white text-center rounded-t-lg">
+      {/* Header with back button - color based on mode */}
+      <div className={`${mode === 'buy' ? 'bg-blue-800 dark:bg-blue-700' : 'bg-green-800 dark:bg-green-700'} p-4 text-white text-center rounded-t-lg`}>
         <div className="flex items-center justify-between">
-          {onBack && (
-            <button
-              type="button"
-              onClick={handleBack}
-              className="flex items-center text-blue-200 hover:text-white transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleBack}
+            className={`flex items-center ${mode === 'buy' ? 'text-blue-200 hover:text-white' : 'text-green-200 hover:text-white'} transition-colors`}
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back to Categories
+          </button>
           <h2 className="text-xl font-semibold flex-1">
-            Search Cars & Trucks
+            {mode === 'buy' ? 'Find Cars & Trucks to Buy' : 'Price Your Vehicle to Sell'}
           </h2>
-          <div className="w-16"></div> {/* Spacer for centering */}
+          <div className="w-32"></div> {/* Spacer for centering */}
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-b-lg shadow-md p-6">
         {/* Vehicle Search Description */}
-        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <div className={`mb-6 p-4 ${mode === 'buy' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'} border rounded-lg`}>
           <div className="flex items-center">
-            <Car className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
-            <p className="text-blue-800 dark:text-blue-200 text-sm">
-              Search for actual vehicles in eBay's Cars & Trucks category. Use the filters below to find specific makes, models, and years.
+            <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
+            <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
+              {mode === 'buy' 
+                ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Use the filters below to find specific makes, models, and years.'
+                : 'Find completed sales of similar vehicles to help price your car or truck for sale.'
+              }
             </p>
           </div>
         </div>
 
         {loadingAspects && (
-          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className={`mb-6 p-4 ${mode === 'buy' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'} border rounded-lg`}>
             <div className="flex items-center">
-              <Loader2 className="h-5 w-5 animate-spin text-blue-600 mr-2" />
-              <span className="text-blue-800 dark:text-blue-200">Loading vehicle options...</span>
+              <Loader2 className={`h-5 w-5 animate-spin ${mode === 'buy' ? 'text-blue-600' : 'text-green-600'} mr-2`} />
+              <span className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'}`}>
+                Loading vehicle options...
+              </span>
             </div>
           </div>
         )}
@@ -357,17 +361,19 @@ const VehicleSearchForm = ({ onSearch, onBack }: VehicleSearchFormProps) => {
                 Free Shipping
               </span>
             </label>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={buyItNowOnly}
-                onChange={(e) => setBuyItNowOnly(e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
-                Buy It Now Only
-              </span>
-            </label>
+            {mode === 'buy' && (
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={buyItNowOnly}
+                  onChange={(e) => setBuyItNowOnly(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                  Buy It Now Only
+                </span>
+              </label>
+            )}
           </div>
         </div>
 
@@ -385,10 +391,10 @@ const VehicleSearchForm = ({ onSearch, onBack }: VehicleSearchFormProps) => {
             type="submit"
             disabled={isLoading || loadingAspects}
             isLoading={isLoading}
-            className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+            className={`px-8 py-3 ${mode === 'buy' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white font-semibold`}
             icon={<Search className="h-5 w-5" />}
           >
-            Search Vehicles
+            {mode === 'buy' ? 'Search Vehicles' : 'Find Sold Vehicles'}
           </Button>
         </div>
       </form>
