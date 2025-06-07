@@ -91,15 +91,16 @@ function buildFilterString(filters: any): string {
     filterParts.push(`sellerLocation:{${filters.sellerLocation}}`);
   }
   
-  // IMPORTANT: Include both auction and fixed price by default unless explicitly filtered
-  // This is a common issue - eBay only returns FIXED_PRICE by default
+  // IMPORTANT: Include all buying options by default for maximum results
+  // This ensures we get auctions, fixed-price listings, AND best offers
   if (filters.buyItNowOnly) {
     filterParts.push('buyingOptions:{FIXED_PRICE}');
   } else if (filters.auctionOnly) {
     filterParts.push('buyingOptions:{AUCTION}');
   } else {
-    // Include both auction and fixed price items for broader results
-    filterParts.push('buyingOptions:{AUCTION|FIXED_PRICE}');
+    // Include ALL buying options for maximum inventory coverage
+    // This will show $54,900 Vipers and $159,995 Vipers alike
+    filterParts.push('buyingOptions:{FIXED_PRICE|AUCTION|BEST_OFFER}');
   }
 
   // Enhanced filters based on eBay Browse API documentation

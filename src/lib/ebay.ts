@@ -287,9 +287,16 @@ function buildFilterString(filters: SearchFilters): string {
     filterParts.push(`sellerLocation:{${filters.sellerLocation}}`);
   }
   
-  // Buy It Now filter is already correct
+  // IMPORTANT: Include all buying options by default for maximum results
+  // This ensures we get auctions, fixed-price listings, AND best offers
   if (filters.buyItNowOnly) {
     filterParts.push('buyingOptions:{FIXED_PRICE}');
+  } else if (filters.auctionOnly) {
+    filterParts.push('buyingOptions:{AUCTION}');
+  } else {
+    // Include ALL buying options for maximum inventory coverage
+    // This will show $54,900 Vipers and $159,995 Vipers alike
+    filterParts.push('buyingOptions:{FIXED_PRICE|AUCTION|BEST_OFFER}');
   }
 
   return filterParts.join(',');
