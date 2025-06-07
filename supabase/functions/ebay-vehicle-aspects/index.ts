@@ -130,15 +130,73 @@ Deno.serve(async (req) => {
     console.log('✅ eBay aspects response received');
     console.log('  - Aspect distributions found:', data.aspectDistributions?.length || 0);
     
-    // Log the aspect distributions structure for debugging
-    if (data.aspectDistributions) {
-      data.aspectDistributions.forEach((dist: any) => {
-        console.log(`  - ${dist.refinementLabel || dist.localizedAspectName}: ${dist.values?.length || dist.aspectValueDistributions?.length || 0} values`);
+    // Extract aspectDistributions from the correct location
+    const dist = data.refinement?.aspectDistributions || data.aspectDistributions || [];
+    
+    if (dist.length > 0) {
+      console.log('🔍 Available aspects:');
+      dist.forEach((d: any) => {
+        console.log(`  - ${d.localizedAspectName}: ${d.aspectValueDistributions?.length || 0} values`);
       });
     }
 
+    // Find specific aspect distributions
+    const makeDist = dist.find((d: any) => d.localizedAspectName === 'Make');
+    const modelDist = dist.find((d: any) => d.localizedAspectName === 'Model');
+    const yearDist = dist.find((d: any) => 
+      d.localizedAspectName === 'Model Year' || 
+      d.localizedAspectName === 'Year'
+    );
+
+    // Build separate arrays for each aspect
+    const makes = (makeDist?.aspectValueDistributions || []).map((v: any) => ({
+      value: v.localizedAspectValue || v.value,
+      count: v.matchCount || v.count || 0
+    }));
+
+    const models = (modelDist?.aspectValueDistributions || []).map((v: any) => ({
+      value: v.localizedAspectValue || v.value,
+      count: v.matchCount || v.count || 0
+    }));
+
+    const years = (yearDist?.aspectValueDistributions || []).map((v: any) => ({
+      value: v.localizedAspectValue || v.value,
+      count: v.matchCount || v.count || 0
+    }));
+
+    // Sort the arrays
+    makes.sort((a: any, b: any) => b.count - a.count);
+    models.sort((a: any, b: any) => b.count - a.count);
+    years.sort((a: any, b: any) => {
+      const yearA = parseInt(a.value);
+      const yearB = parseInt(b.value);
+      if (!isNaN(yearA) && !isNaN(yearB)) {
+        return yearB - yearA; // Newest first
+      }
+      return b.count - a.count;
+    });
+
+    console.log(`✅ Returning: ${makes.length} makes, ${models.length} models, ${years.length} years`);
+
+    // Return structured response with separate arrays
+    const out = {
+      makes,
+      models,  
+      years
+    };
+
+    // Clear downstream options based on current selection state
+    if (make && !model) {
+      // If make selected but no model, keep models but clear makes
+      out.makes = [];
+    } else if (make && model) {
+      // If both selected, keep years but clear makes and models
+      out.makes = [];
+      out.models = [];
+    }
+
     return new Response(
-      JSON.stringify(data),
+      JSON.stringify(out),
       { 
         headers: { 
           ...corsHeaders, 

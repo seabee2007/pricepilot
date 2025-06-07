@@ -1195,67 +1195,37 @@ export async function getVehicleAspects(
       const data = await response.json();
       console.log('✅ Vehicle aspects response received:', data);
       
-      // Parse aspectDistributions from the response - check both possible locations
-      const makes: Array<{ name: string; count: number }> = [];
-      const models: Array<{ name: string; count: number }> = [];
-      const years: Array<{ name: string; count: number }> = [];
+      // The edge function now returns structured data with separate arrays
+      const makes = data.makes || [];
+      const models = data.models || [];
+      const years = data.years || [];
       
-      // eBay returns aspectDistributions under refinement object
-      const aspectDistributions = data.aspectDistributions 
-                               || data.refinement?.aspectDistributions 
-                               || [];
+      console.log('📊 Structured vehicle aspects received:');
+      console.log('  - Makes:', makes.length);
+      console.log('  - Models:', models.length);
+      console.log('  - Years:', years.length);
       
-      if (aspectDistributions.length > 0) {
-        console.log('✅ Found aspectDistributions:', aspectDistributions.length);
-        
-        aspectDistributions.forEach((dist: any) => {
-          const label = dist.refinementLabel || dist.localizedAspectName || '';
-          const values = dist.values || dist.aspectValueDistributions || [];
-          
-          console.log(`🔍 Processing aspect: ${label} with ${values.length} values`);
-          
-          if (label.toLowerCase().includes('make')) {
-            values.forEach((val: any) => {
-              makes.push({
-                name: val.value || val.localizedAspectValue || '',
-                count: val.count || val.matchCount || 0
-              });
-            });
-          } else if (label.toLowerCase().includes('model')) {
-            values.forEach((val: any) => {
-              models.push({
-                name: val.value || val.localizedAspectValue || '',
-                count: val.count || val.matchCount || 0
-              });
-            });
-          } else if (label.toLowerCase().includes('year')) {
-            values.forEach((val: any) => {
-              years.push({
-                name: val.value || val.localizedAspectValue || '',
-                count: val.count || val.matchCount || 0
-              });
-            });
-          }
-        });
-      } else {
-        console.log('❌ No aspectDistributions found in response');
-        console.log('🔍 Available keys:', Object.keys(data));
-        if (data.refinement) {
-          console.log('🔍 Refinement keys:', Object.keys(data.refinement));
-        }
-      }
+      // Convert to the expected format with 'name' property
+      const formattedMakes = makes.map((item: any) => ({
+        name: item.value,
+        count: item.count
+      }));
       
-      // Sort results
-      makes.sort((a, b) => b.count - a.count);
-      models.sort((a, b) => b.count - a.count);
-      years.sort((a, b) => parseInt(b.name) - parseInt(a.name));
+      const formattedModels = models.map((item: any) => ({
+        name: item.value,
+        count: item.count
+      }));
       
-      console.log('📊 Final vehicle aspects:');
-      console.log('  - Makes found:', makes.length);
-      console.log('  - Models found:', models.length);
-      console.log('  - Years found:', years.length);
+      const formattedYears = years.map((item: any) => ({
+        name: item.value,
+        count: item.count
+      }));
       
-      return { makes, models, years };
+      return { 
+        makes: formattedMakes, 
+        models: formattedModels, 
+        years: formattedYears 
+      };
     } catch (error) {
       console.error('💥 Error in getVehicleAspects:', error);
       throw error;
