@@ -555,3 +555,48 @@ export async function triggerPriceAlertsManually(): Promise<{ success: boolean; 
     };
   }
 }
+
+// Debug function to force send a test email
+export async function sendTestEmail(): Promise<{ success: boolean; message: string }> {
+  try {
+    console.log('📧 Sending test email...');
+
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      return { 
+        success: false, 
+        message: 'Authentication required. Please sign in first.' 
+      };
+    }
+
+    const { data, error } = await supabase.functions.invoke('check-price-alerts', {
+      body: { 
+        trigger: 'test-email',
+        forceEmail: true,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    if (error) {
+      console.error('❌ Error sending test email:', error);
+      return { 
+        success: false, 
+        message: `Test email failed: ${error.message}` 
+      };
+    }
+
+    console.log('✅ Test email response:', data);
+    return { 
+      success: true, 
+      message: data?.message || 'Test email sent successfully! Check your inbox.' 
+    };
+    
+  } catch (error) {
+    console.error('💥 Error sending test email:', error);
+    return { 
+      success: false, 
+      message: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}` 
+    };
+  }
+}

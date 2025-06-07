@@ -405,6 +405,87 @@ Deno.serve(async (req) => {
       console.log("🔧 Running manual price alert check");
     }
     
+    // Parse request body to check for test email trigger
+    let requestBody = {};
+    try {
+      if (req.body) {
+        const text = await req.text();
+        if (text) {
+          requestBody = JSON.parse(text);
+        }
+      }
+    } catch (parseError) {
+      console.log("Could not parse request body, continuing with normal flow");
+    }
+    
+    // Handle test email request
+    if (requestBody?.trigger === 'test-email' || requestBody?.forceEmail) {
+      console.log("📧 Force sending test email...");
+      
+      // Get user from auth header
+      const authToken = authHeader?.replace('Bearer ', '');
+      if (!authToken) {
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: "No auth token provided for test email",
+            timestamp: new Date().toISOString()
+          }),
+          {
+            headers: { 
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            },
+            status: 401,
+          }
+        );
+      }
+      
+      try {
+        // Verify the user token and get user info
+        const { data: { user }, error: userError } = await supabase.auth.getUser(authToken);
+        
+        if (userError || !user) {
+          throw new Error("Invalid auth token");
+        }
+        
+        // Force send a test email
+        await sendPriceAlert(user.id, "iPhone 13", 599.99, 699.99);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: "Test email sent successfully! Check your inbox for the price alert notification.",
+            timestamp: new Date().toISOString()
+          }),
+          {
+            headers: { 
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            },
+            status: 200,
+          }
+        );
+        
+      } catch (emailError) {
+        console.error("❌ Error sending test email:", emailError);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Failed to send test email: ${emailError.message}`,
+            timestamp: new Date().toISOString()
+          }),
+          {
+            headers: { 
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            },
+            status: 500,
+          }
+        );
+      }
+    }
+    
     // Run the price alert check
     await checkPriceAlerts();
     

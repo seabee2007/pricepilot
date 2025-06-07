@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { SavedSearch } from '../types';
-import { getSavedSearches, deleteSavedSearch, triggerPriceAlertsManually } from '../lib/supabase';
+import { getSavedSearches, deleteSavedSearch, triggerPriceAlertsManually, sendTestEmail } from '../lib/supabase';
 import SavedSearchItem from '../components/SavedSearchItem';
-import { PlusCircle, Search, Bell, TestTube2 } from 'lucide-react';
+import { PlusCircle, Search, Bell, TestTube2, Mail } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
 
@@ -12,6 +12,7 @@ const SavedSearchesPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [testingAlerts, setTestingAlerts] = useState(false);
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   useEffect(() => {
     const fetchSavedSearches = async () => {
@@ -71,6 +72,31 @@ const SavedSearchesPage = () => {
     }
   };
 
+  const handleSendTestEmail = async () => {
+    setSendingTestEmail(true);
+    console.log('📧 Sending test email...');
+    
+    try {
+      const result = await sendTestEmail();
+      console.log('📧 Test email result:', result);
+      
+      if (result.success) {
+        toast.success(`✅ ${result.message}`);
+        console.log('✅ Test email sent successfully');
+      } else {
+        toast.error(`❌ ${result.message}`);
+        console.error('❌ Test email failed:', result.message);
+      }
+    } catch (err) {
+      console.error('💥 Error sending test email:', err);
+      
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      toast.error(`Failed to send test email: ${errorMessage}`);
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
@@ -97,6 +123,14 @@ const SavedSearchesPage = () => {
               {testingAlerts ? 'Testing...' : 'Test Price Alerts'}
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={handleSendTestEmail}
+            disabled={sendingTestEmail}
+            icon={<Mail className="h-4 w-4" />}
+          >
+            {sendingTestEmail ? 'Sending...' : 'Send Test Email'}
+          </Button>
           <Link to="/">
             <Button
               variant="outline"
