@@ -1159,19 +1159,23 @@ export async function getVehicleAspects(
         throw new Error('Authentication required. Please sign in.');
       }
 
-      // Build aspect filter using PIPE format you specified
-      const aspectParts: string[] = [];
-      if (make) aspectParts.push(`Make:{${make}}`);
-      if (model) aspectParts.push(`Model:{${model}}`);
+      // Use a broader search that will actually return items AND refinements
+      // eBay only returns aspect refinements when there are actual items in the response
+      let searchQuery = 'car truck vehicle';
+      let categoryId = '6001'; // Cars & Trucks
       
-      const filters: SearchFilters = {
-        category: '6001', // Cars & Trucks category ID
-      };
-      
-      // Add aspect filter if we have make/model to narrow results
-      if (aspectParts.length > 0) {
-        filters.aspectFilter = aspectParts.join('|'); // Use PIPE separator
+      // If we have specific make/model, use them in the query (not as filters initially)
+      if (make && model) {
+        searchQuery = `${make} ${model}`;
+      } else if (make) {
+        searchQuery = `${make} car truck`;
       }
+
+      const filters: SearchFilters = {
+        category: categoryId,
+        // Don't use restrictive filters that prevent items from being returned
+        // We need actual items for eBay to return aspect refinements
+      };
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -1183,21 +1187,21 @@ export async function getVehicleAspects(
       
       console.log('🌐 Browse API vehicle aspects request');
       console.log('📦 Request payload:', {
-        query: 'vehicle',
+        query: searchQuery,
         filters,
-        pageSize: 1, // Minimal items, we want the refinements
+        pageSize: 50, // Need actual items for refinements
         pageOffset: 0,
         mode: 'live',
-        fieldgroups: ['ASPECT_REFINEMENTS'] // Get refinements only
+        fieldgroups: ['ASPECT_REFINEMENTS'] // Get refinements
       });
 
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          query: 'vehicle',
+          query: searchQuery,
           filters,
-          pageSize: 1,
+          pageSize: 50, // Need items returned for refinements to work
           pageOffset: 0,
           mode: 'live',
           fieldgroups: ['ASPECT_REFINEMENTS']
@@ -1218,16 +1222,76 @@ export async function getVehicleAspects(
       // Extract aspect refinements from the response
       let refinements = [];
       
-      // Try different possible response structures
+      // Check for refinements in the response
       if (data.refinement?.aspectDistributions) {
         refinements = data.refinement.aspectDistributions;
+        console.log('✅ Found refinements in data.refinement.aspectDistributions');
       } else if (data.aspectDistributions) {
         refinements = data.aspectDistributions;
+        console.log('✅ Found refinements in data.aspectDistributions');
       } else if (data.refinements?.aspectDistributions) {
         refinements = data.refinements.aspectDistributions;
+        console.log('✅ Found refinements in data.refinements.aspectDistributions');
       } else {
-        console.log('🔍 Full response structure:', JSON.stringify(data, null, 2));
         console.log('❌ No aspect refinements found in response');
+        console.log('🔍 Available top-level keys:', Object.keys(data));
+        
+        // Check if we have items but no refinements
+        if (data.items && data.items.length > 0) {
+          console.log('✅ Items found:', data.items.length);
+          console.log('💡 Try parsing vehicle data from item titles as fallback');
+          
+          // Parse vehicle makes/models from actual item titles as fallback
+          const makeSet = new Set<string>();
+          const modelSet = new Set<string>();
+          const yearSet = new Set<string>();
+          
+          data.items.forEach((item: any, index: number) => {
+            if (index < 10) { // Log first few for debugging
+              console.log(`📋 Item ${index + 1}: ${item.title}`);
+            }
+            
+            const title = item.title?.toLowerCase() || '';
+            
+            // Extract years (4-digit numbers that look like years)
+            const yearMatches = title.match(/\b(19|20)\d{2}\b/g);
+            if (yearMatches) {
+              yearMatches.forEach((year: string) => yearSet.add(year));
+            }
+            
+            // Common makes (expand this list as needed)
+            const commonMakes = [
+              'toyota', 'honda', 'ford', 'chevrolet', 'chevy', 'nissan', 
+              'bmw', 'mercedes', 'audi', 'volkswagen', 'vw', 'hyundai',
+              'kia', 'mazda', 'subaru', 'lexus', 'acura', 'infiniti',
+              'cadillac', 'buick', 'gmc', 'ram', 'dodge', 'chrysler',
+              'jeep', 'mitsubishi', 'volvo', 'porsche', 'land rover',
+              'jaguar', 'mini', 'tesla', 'genesis'
+            ];
+            
+            commonMakes.forEach(make => {
+              if (title.includes(make)) {
+                makeSet.add(make.charAt(0).toUpperCase() + make.slice(1));
+              }
+            });
+          });
+          
+          // Convert Sets to arrays with count estimation
+          const makes = Array.from(makeSet).map(name => ({ name, count: 1 }));
+          const models = Array.from(modelSet).map(name => ({ name, count: 1 }));
+          const years = Array.from(yearSet).map(name => ({ name, count: 1 }))
+            .sort((a, b) => parseInt(b.name) - parseInt(a.name));
+          
+          if (makes.length > 0 || years.length > 0) {
+            console.log('📊 Parsed from titles:');
+            console.log('  - Makes found:', makes.length);
+            console.log('  - Years found:', years.length);
+            
+            return { makes, models, years };
+          }
+        } else {
+          console.log('❌ No items found in response');
+        }
       }
       
       const makes: Array<{ name: string; count: number }> = [];
@@ -1239,21 +1303,23 @@ export async function getVehicleAspects(
         const aspectName = aspect.localizedAspectName || aspect.aspectName || aspect.name;
         const aspectValues = aspect.aspectValueDistributions || aspect.values || [];
         
-        if (aspectName === 'Make' || aspectName === 'make') {
+        console.log(`🔍 Processing aspect: ${aspectName} with ${aspectValues.length} values`);
+        
+        if (aspectName === 'Make' || aspectName === 'make' || aspectName.toLowerCase().includes('make')) {
           aspectValues.forEach((value: any) => {
             makes.push({
               name: value.localizedAspectValue || value.value || value.name,
               count: value.matchCount || value.count || 0
             });
           });
-        } else if (aspectName === 'Model' || aspectName === 'model') {
+        } else if (aspectName === 'Model' || aspectName === 'model' || aspectName.toLowerCase().includes('model')) {
           aspectValues.forEach((value: any) => {
             models.push({
               name: value.localizedAspectValue || value.value || value.name,
               count: value.matchCount || value.count || 0
             });
           });
-        } else if (aspectName === 'Year' || aspectName === 'year') {
+        } else if (aspectName === 'Year' || aspectName === 'year' || aspectName.toLowerCase().includes('year')) {
           aspectValues.forEach((value: any) => {
             years.push({
               name: value.localizedAspectValue || value.value || value.name,
@@ -1262,47 +1328,6 @@ export async function getVehicleAspects(
           });
         }
       });
-      
-      // If no refinements found, try a fallback approach with a broader search
-      if (makes.length === 0 && models.length === 0 && years.length === 0) {
-        console.log('🔄 No refinements found, trying fallback search without aspects...');
-        
-        // Try a broader search with just "car" in motors category
-        const fallbackResponse = await fetch(functionUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            query: 'car',
-            filters: { category: '6001' },
-            pageSize: 5,
-            pageOffset: 0,
-            mode: 'live',
-            fieldgroups: ['ASPECT_REFINEMENTS']
-          }),
-        });
-        
-        if (fallbackResponse.ok) {
-          const fallbackData = await fallbackResponse.json();
-          console.log('🔄 Fallback response:', fallbackData);
-          
-          // Try to extract refinements from fallback
-          if (fallbackData.refinement?.aspectDistributions) {
-            console.log('✅ Found refinements in fallback response');
-            // Process fallback refinements the same way
-            fallbackData.refinement.aspectDistributions.forEach((aspect: any) => {
-              const aspectName = aspect.localizedAspectName || aspect.aspectName;
-              if (aspectName === 'Make' && makes.length === 0) {
-                aspect.aspectValueDistributions?.forEach((value: any) => {
-                  makes.push({
-                    name: value.localizedAspectValue,
-                    count: value.matchCount || 0
-                  });
-                });
-              }
-            });
-          }
-        }
-      }
       
       // Sort by count (most popular first)
       makes.sort((a, b) => b.count - a.count);
