@@ -244,7 +244,7 @@ export async function saveItem(item: {
     .select('id')
     .eq('item_id', item.itemId)
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
   if (existingItem) {
     throw new Error('Item is already saved');
@@ -253,6 +253,7 @@ export async function saveItem(item: {
   const { data, error } = await supabase
     .from('saved_items')
     .insert({
+      user_id: user.id, // Explicitly set user_id for RLS policy
       item_id: item.itemId,
       title: item.title,
       price: item.price,
@@ -327,9 +328,9 @@ export async function checkIfItemSaved(itemId: string): Promise<boolean> {
     .select('id')
     .eq('item_id', itemId)
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
+  if (error) {
     console.error('Error checking if item is saved:', error);
     return false;
   }
