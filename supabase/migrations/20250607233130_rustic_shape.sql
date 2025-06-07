@@ -30,15 +30,19 @@ CREATE INDEX IF NOT EXISTS idx_saved_searches_filters ON public.saved_searches U
 ALTER TABLE public.saved_searches ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for saved_searches
+DROP POLICY IF EXISTS "Users can view own saved searches" ON public.saved_searches;
 CREATE POLICY "Users can view own saved searches" ON public.saved_searches
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own saved searches" ON public.saved_searches;
 CREATE POLICY "Users can insert own saved searches" ON public.saved_searches
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own saved searches" ON public.saved_searches;
 CREATE POLICY "Users can update own saved searches" ON public.saved_searches
   FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own saved searches" ON public.saved_searches;
 CREATE POLICY "Users can delete own saved searches" ON public.saved_searches
   FOR DELETE USING (auth.uid() = user_id);
 
@@ -67,26 +71,28 @@ CREATE INDEX IF NOT EXISTS idx_price_history_search_timestamp ON public.price_hi
 CREATE INDEX IF NOT EXISTS idx_price_history_query_timestamp_desc ON public.price_history(query, timestamp DESC);
 
 -- Composite index for daily aggregation queries
-CREATE INDEX IF NOT EXISTS idx_price_history_daily_agg ON public.price_history(
-  date_trunc('day', timestamp), 
-  search_id, 
-  query
-) WHERE timestamp > '2024-01-01'::timestamp;
+-- CREATE INDEX IF NOT EXISTS idx_price_history_daily_agg ON public.price_history(
+--   date_trunc('day', timestamp), 
+--   search_id, 
+--   query
+-- ) WHERE timestamp > '2024-01-01'::timestamp;
 
 -- Index for price fields to speed up MIN/MAX operations
-CREATE INDEX IF NOT EXISTS idx_price_history_prices ON public.price_history(
-  COALESCE(min_price, price, avg_price),
-  COALESCE(max_price, price, avg_price),
-  COALESCE(avg_price, price)
-) WHERE timestamp > '2024-01-01'::timestamp;
+-- CREATE INDEX IF NOT EXISTS idx_price_history_prices ON public.price_history(
+--   COALESCE(min_price, price, avg_price),
+--   COALESCE(max_price, price, avg_price),
+--   COALESCE(avg_price, price)
+-- ) WHERE timestamp > '2024-01-01'::timestamp;
 
 -- Enable RLS for price_history
 ALTER TABLE public.price_history ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for price_history
+DROP POLICY IF EXISTS "Anyone can view price history" ON public.price_history;
 CREATE POLICY "Anyone can view price history" ON public.price_history
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Service role can manage price history" ON public.price_history;
 CREATE POLICY "Service role can manage price history" ON public.price_history
   FOR ALL USING (auth.role() = 'service_role');
 
@@ -112,12 +118,15 @@ CREATE INDEX IF NOT EXISTS idx_profiles_created_at ON public.profiles(created_at
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for profiles
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile" ON public.profiles
   FOR SELECT USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile" ON public.profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 
@@ -158,15 +167,19 @@ CREATE INDEX IF NOT EXISTS idx_saved_items_user_item ON public.saved_items(user_
 ALTER TABLE public.saved_items ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for saved_items
+DROP POLICY IF EXISTS "Users can view own saved items" ON public.saved_items;
 CREATE POLICY "Users can view own saved items" ON public.saved_items
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own saved items" ON public.saved_items;
 CREATE POLICY "Users can insert own saved items" ON public.saved_items
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own saved items" ON public.saved_items;
 CREATE POLICY "Users can update own saved items" ON public.saved_items
   FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own saved items" ON public.saved_items;
 CREATE POLICY "Users can delete own saved items" ON public.saved_items
   FOR DELETE USING (auth.uid() = user_id);
 
@@ -186,6 +199,7 @@ CREATE TABLE IF NOT EXISTS stripe_customers (
 
 ALTER TABLE stripe_customers ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own customer data" ON stripe_customers;
 CREATE POLICY "Users can view their own customer data"
     ON stripe_customers
     FOR SELECT
@@ -193,17 +207,22 @@ CREATE POLICY "Users can view their own customer data"
     USING (user_id = auth.uid() AND deleted_at IS NULL);
 
 -- Stripe Subscription Status Enum
-CREATE TYPE stripe_subscription_status AS ENUM (
-    'not_started',
-    'incomplete',
-    'incomplete_expired',
-    'trialing',
-    'active',
-    'past_due',
-    'canceled',
-    'unpaid',
-    'paused'
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'stripe_subscription_status') THEN
+    CREATE TYPE stripe_subscription_status AS ENUM (
+        'not_started',
+        'incomplete',
+        'incomplete_expired',
+        'trialing',
+        'active',
+        'past_due',
+        'canceled',
+        'unpaid',
+        'paused'
+    );
+  END IF;
+END $$;
 
 -- Stripe Subscriptions
 CREATE TABLE IF NOT EXISTS stripe_subscriptions (
@@ -224,6 +243,7 @@ CREATE TABLE IF NOT EXISTS stripe_subscriptions (
 
 ALTER TABLE stripe_subscriptions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own subscription data" ON stripe_subscriptions;
 CREATE POLICY "Users can view their own subscription data"
     ON stripe_subscriptions
     FOR SELECT
@@ -238,11 +258,16 @@ CREATE POLICY "Users can view their own subscription data"
     );
 
 -- Stripe Order Status Enum
-CREATE TYPE stripe_order_status AS ENUM (
-    'pending',
-    'completed',
-    'canceled'
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'stripe_order_status') THEN
+    CREATE TYPE stripe_order_status AS ENUM (
+        'pending',
+        'completed',
+        'canceled'
+    );
+  END IF;
+END $$;
 
 -- Stripe Orders
 CREATE TABLE IF NOT EXISTS stripe_orders (
@@ -262,6 +287,7 @@ CREATE TABLE IF NOT EXISTS stripe_orders (
 
 ALTER TABLE stripe_orders ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own order data" ON stripe_orders;
 CREATE POLICY "Users can view their own order data"
     ON stripe_orders
     FOR SELECT
@@ -399,7 +425,7 @@ GROUP BY search_id, query, date_trunc('day', timestamp)::date
 ORDER BY search_id, day;
 
 -- View for user subscriptions
-CREATE VIEW stripe_user_subscriptions WITH (security_invoker = true) AS
+CREATE OR REPLACE VIEW stripe_user_subscriptions WITH (security_invoker = true) AS
 SELECT
     c.customer_id,
     s.subscription_id,
@@ -417,7 +443,7 @@ AND c.deleted_at IS NULL
 AND s.deleted_at IS NULL;
 
 -- View for user orders
-CREATE VIEW stripe_user_orders WITH (security_invoker) AS
+CREATE OR REPLACE VIEW stripe_user_orders WITH (security_invoker) AS
 SELECT
     c.customer_id,
     o.id as order_id,
@@ -440,21 +466,25 @@ AND o.deleted_at IS NULL;
 -- =====================================================
 
 -- Trigger to automatically update updated_at for saved_searches
+DROP TRIGGER IF EXISTS set_saved_searches_updated_at ON public.saved_searches;
 CREATE TRIGGER set_saved_searches_updated_at
   BEFORE UPDATE ON public.saved_searches
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- Trigger to automatically update updated_at for profiles
+DROP TRIGGER IF EXISTS set_profiles_updated_at ON public.profiles;
 CREATE TRIGGER set_profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- Trigger to automatically update updated_at for saved_items
+DROP TRIGGER IF EXISTS set_saved_items_updated_at ON public.saved_items;
 CREATE TRIGGER set_saved_items_updated_at
   BEFORE UPDATE ON public.saved_items
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 -- Trigger to create profile automatically when user signs up
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

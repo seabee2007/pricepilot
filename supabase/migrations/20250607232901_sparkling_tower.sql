@@ -63,7 +63,7 @@ END $$;
 -- Create indexes for better performance on time-series queries
 CREATE INDEX IF NOT EXISTS idx_price_history_search_id_timestamp ON public.price_history(search_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_price_history_query_timestamp ON public.price_history(query, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_price_history_timestamp_recent ON public.price_history(timestamp) WHERE timestamp > NOW() - INTERVAL '30 days';
+-- CREATE INDEX IF NOT EXISTS idx_price_history_timestamp_recent ON public.price_history(timestamp) WHERE timestamp > NOW() - INTERVAL '30 days';
 
 -- Drop existing functions if they exist to recreate them properly
 DROP FUNCTION IF EXISTS public.get_30d_price_history(UUID);
@@ -92,7 +92,7 @@ BEGIN
     COUNT(*) AS data_points
   FROM public.price_history ph
   WHERE ph.search_id = p_search_id
-    AND ph.timestamp > NOW() - INTERVAL '30 days'
+    AND ph.timestamp > (CURRENT_DATE - INTERVAL '30 days')
   GROUP BY date_trunc('day', ph.timestamp)::date
   ORDER BY date_trunc('day', ph.timestamp)::date;
 END;
@@ -121,7 +121,7 @@ BEGIN
     COUNT(*) AS data_points
   FROM public.price_history ph
   WHERE ph.query = p_query
-    AND ph.timestamp > NOW() - INTERVAL '30 days'
+    AND ph.timestamp > (CURRENT_DATE - INTERVAL '30 days')
   GROUP BY date_trunc('day', ph.timestamp)::date
   ORDER BY date_trunc('day', ph.timestamp)::date;
 END;
@@ -138,7 +138,7 @@ SELECT
   AVG(COALESCE(avg_price, price)) AS avg_price,
   COUNT(*) AS data_points
 FROM public.price_history
-WHERE timestamp > NOW() - INTERVAL '30 days'
+WHERE timestamp > (CURRENT_DATE - INTERVAL '30 days')
 GROUP BY search_id, query, day
 ORDER BY search_id, day;
 

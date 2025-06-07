@@ -62,7 +62,7 @@ END $$;
 
 -- Create indexes for better performance on time-series queries
 CREATE INDEX IF NOT EXISTS idx_price_history_search_id_timestamp ON public.price_history(search_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_price_history_created_at_range ON public.price_history(created_at) WHERE created_at > NOW() - INTERVAL '30 days';
+-- CREATE INDEX IF NOT EXISTS idx_price_history_created_at_range ON public.price_history(created_at) WHERE created_at > '2024-01-01'::timestamp;
 
 -- Create daily price summary view
 CREATE OR REPLACE VIEW public.daily_price_summary AS
@@ -75,7 +75,7 @@ SELECT
   AVG(COALESCE(price, avg_price)) AS avg_price,
   COUNT(*) AS data_points
 FROM public.price_history
-WHERE timestamp > NOW() - INTERVAL '30 days'
+WHERE timestamp > (CURRENT_DATE - INTERVAL '30 days')
   AND search_id IS NOT NULL
 GROUP BY search_id, query, day
 ORDER BY search_id, day;
@@ -99,7 +99,7 @@ BEGIN
     COUNT(*)
   FROM public.price_history ph
   WHERE ph.search_id = p_search_id
-    AND ph.timestamp > NOW() - INTERVAL '30 days'
+    AND ph.timestamp > (CURRENT_DATE - INTERVAL '30 days')
   GROUP BY date_trunc('day', ph.timestamp)::date
   ORDER BY date_trunc('day', ph.timestamp)::date;
 END;
@@ -124,7 +124,7 @@ BEGIN
     COUNT(*)
   FROM public.price_history ph
   WHERE ph.query = p_query
-    AND ph.timestamp > NOW() - INTERVAL '30 days'
+    AND ph.timestamp > (CURRENT_DATE - INTERVAL '30 days')
   GROUP BY date_trunc('day', ph.timestamp)::date
   ORDER BY date_trunc('day', ph.timestamp)::date;
 END;

@@ -24,18 +24,18 @@ CREATE INDEX IF NOT EXISTS idx_price_history_search_timestamp ON public.price_hi
 CREATE INDEX IF NOT EXISTS idx_price_history_query_timestamp_desc ON public.price_history(query, timestamp DESC);
 
 -- Create a composite index for the daily aggregation queries
-CREATE INDEX IF NOT EXISTS idx_price_history_daily_agg ON public.price_history(
-  date_trunc('day', timestamp), 
-  search_id, 
-  query
-) WHERE timestamp > '2024-01-01'::timestamp; -- Use a static date instead of NOW()
+-- CREATE INDEX IF NOT EXISTS idx_price_history_daily_agg ON public.price_history(
+--   date_trunc('day', timestamp), 
+--   search_id, 
+--   query
+-- ) WHERE timestamp > '2024-01-01'::timestamp; -- Use a static date instead of NOW()
 
 -- Add index for price fields to speed up MIN/MAX operations
-CREATE INDEX IF NOT EXISTS idx_price_history_prices ON public.price_history(
-  COALESCE(min_price, price, avg_price),
-  COALESCE(max_price, price, avg_price),
-  COALESCE(avg_price, price)
-) WHERE timestamp > '2024-01-01'::timestamp;
+-- CREATE INDEX IF NOT EXISTS idx_price_history_prices ON public.price_history(
+--   COALESCE(min_price, price, avg_price),
+--   COALESCE(max_price, price, avg_price),
+--   COALESCE(avg_price, price)
+-- ) WHERE timestamp > '2024-01-01'::timestamp;
 
 -- Update the RPC functions to be more efficient and handle edge cases better
 CREATE OR REPLACE FUNCTION public.get_30d_price_history(p_search_id UUID)
