@@ -55,6 +55,12 @@ CREATE INDEX IF NOT EXISTS idx_saved_items_user_item ON public.saved_items(user_
 ALTER TABLE public.saved_items ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Users can view own saved items" ON public.saved_items;
+DROP POLICY IF EXISTS "Users can insert own saved items" ON public.saved_items;
+DROP POLICY IF EXISTS "Users can update own saved items" ON public.saved_items;
+DROP POLICY IF EXISTS "Users can delete own saved items" ON public.saved_items;
+
 -- Users can only see their own saved items
 CREATE POLICY "Users can view own saved items" ON public.saved_items
   FOR SELECT USING (auth.uid() = user_id);
@@ -72,6 +78,7 @@ CREATE POLICY "Users can delete own saved items" ON public.saved_items
   FOR DELETE USING (auth.uid() = user_id);
 
 -- Create trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS set_saved_items_updated_at ON public.saved_items;
 CREATE TRIGGER set_saved_items_updated_at
   BEFORE UPDATE ON public.saved_items
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();

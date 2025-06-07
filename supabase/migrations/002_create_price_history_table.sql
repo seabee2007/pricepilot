@@ -17,6 +17,10 @@ CREATE INDEX IF NOT EXISTS idx_price_history_query_timestamp ON public.price_his
 ALTER TABLE public.price_history ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies - price history is public read-only data
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Anyone can view price history" ON public.price_history;
+DROP POLICY IF EXISTS "Service role can manage price history" ON public.price_history;
+
 CREATE POLICY "Anyone can view price history" ON public.price_history
   FOR SELECT USING (true);
 

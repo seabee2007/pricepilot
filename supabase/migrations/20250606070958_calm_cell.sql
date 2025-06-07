@@ -44,23 +44,32 @@ CREATE TABLE IF NOT EXISTS stripe_customers (
 
 ALTER TABLE stripe_customers ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own customer data" ON stripe_customers;
+
 CREATE POLICY "Users can view their own customer data"
     ON stripe_customers
     FOR SELECT
     TO authenticated
     USING (user_id = auth.uid() AND deleted_at IS NULL);
 
-CREATE TYPE stripe_subscription_status AS ENUM (
-    'not_started',
-    'incomplete',
-    'incomplete_expired',
-    'trialing',
-    'active',
-    'past_due',
-    'canceled',
-    'unpaid',
-    'paused'
-);
+-- Create enum type conditionally
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'stripe_subscription_status') THEN
+        CREATE TYPE stripe_subscription_status AS ENUM (
+            'not_started',
+            'incomplete',
+            'incomplete_expired',
+            'trialing',
+            'active',
+            'past_due',
+            'canceled',
+            'unpaid',
+            'paused'
+        );
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS stripe_subscriptions (
   id bigint primary key generated always as identity,
@@ -80,6 +89,9 @@ CREATE TABLE IF NOT EXISTS stripe_subscriptions (
 
 ALTER TABLE stripe_subscriptions ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own subscription data" ON stripe_subscriptions;
+
 CREATE POLICY "Users can view their own subscription data"
     ON stripe_subscriptions
     FOR SELECT
@@ -93,11 +105,17 @@ CREATE POLICY "Users can view their own subscription data"
         AND deleted_at IS NULL
     );
 
-CREATE TYPE stripe_order_status AS ENUM (
-    'pending',
-    'completed',
-    'canceled'
-);
+-- Create enum type conditionally
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'stripe_order_status') THEN
+        CREATE TYPE stripe_order_status AS ENUM (
+            'pending',
+            'completed',
+            'canceled'
+        );
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS stripe_orders (
     id bigint primary key generated always as identity,
@@ -116,6 +134,9 @@ CREATE TABLE IF NOT EXISTS stripe_orders (
 
 ALTER TABLE stripe_orders ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Users can view their own order data" ON stripe_orders;
+
 CREATE POLICY "Users can view their own order data"
     ON stripe_orders
     FOR SELECT
@@ -130,7 +151,7 @@ CREATE POLICY "Users can view their own order data"
     );
 
 -- View for user subscriptions
-CREATE VIEW stripe_user_subscriptions WITH (security_invoker = true) AS
+CREATE OR REPLACE VIEW stripe_user_subscriptions WITH (security_invoker = true) AS
 SELECT
     c.customer_id,
     s.subscription_id,
@@ -150,7 +171,7 @@ AND s.deleted_at IS NULL;
 GRANT SELECT ON stripe_user_subscriptions TO authenticated;
 
 -- View for user orders
-CREATE VIEW stripe_user_orders WITH (security_invoker) AS
+CREATE OR REPLACE VIEW stripe_user_orders WITH (security_invoker) AS
 SELECT
     c.customer_id,
     o.id as order_id,

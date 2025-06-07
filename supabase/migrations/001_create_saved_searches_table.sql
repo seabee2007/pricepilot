@@ -20,6 +20,12 @@ CREATE INDEX IF NOT EXISTS idx_saved_searches_filters ON public.saved_searches U
 ALTER TABLE public.saved_searches ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies
+-- Drop existing policies first to avoid conflicts
+DROP POLICY IF EXISTS "Users can view own saved searches" ON public.saved_searches;
+DROP POLICY IF EXISTS "Users can insert own saved searches" ON public.saved_searches;
+DROP POLICY IF EXISTS "Users can update own saved searches" ON public.saved_searches;
+DROP POLICY IF EXISTS "Users can delete own saved searches" ON public.saved_searches;
+
 -- Users can only see their own saved searches
 CREATE POLICY "Users can view own saved searches" ON public.saved_searches
   FOR SELECT USING (auth.uid() = user_id);
@@ -46,6 +52,7 @@ END;
 $$ language 'plpgsql';
 
 -- Create trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS set_saved_searches_updated_at ON public.saved_searches;
 CREATE TRIGGER set_saved_searches_updated_at
   BEFORE UPDATE ON public.saved_searches
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
