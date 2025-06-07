@@ -11,19 +11,40 @@ interface VehicleSearchFormProps {
   mode: SearchMode;
   onSearch?: (query: string, filters: SearchFilters) => void;
   onBack?: () => void;
+  // Add props to preserve user inputs when returning from results
+  initialMake?: string;
+  initialModel?: string;
+  initialYear?: string;
+  initialYearRange?: { from: string; to: string };
+  initialPriceRange?: { min: string; max: string };
+  initialCondition?: number[];
+  initialFreeShipping?: boolean;
+  initialBuyItNowOnly?: boolean;
 }
 
-const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) => {
+const VehicleSearchForm = ({ 
+  mode, 
+  onSearch, 
+  onBack,
+  initialMake = '',
+  initialModel = '',
+  initialYear = '',
+  initialYearRange = { from: '', to: '' },
+  initialPriceRange = { min: '', max: '' },
+  initialCondition = [],
+  initialFreeShipping = false,
+  initialBuyItNowOnly = false
+}: VehicleSearchFormProps) => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingAspects, setLoadingAspects] = useState(false);
   const [refreshingAspects, setRefreshingAspects] = useState(false);
   
-  // Vehicle selection state
-  const [selectedMake, setSelectedMake] = useState('');
-  const [selectedModel, setSelectedModel] = useState('');
-  const [selectedYear, setSelectedYear] = useState('');
-  const [yearRange, setYearRange] = useState({ from: '', to: '' });
+  // Vehicle selection state - initialize with passed values
+  const [selectedMake, setSelectedMake] = useState(initialMake);
+  const [selectedModel, setSelectedModel] = useState(initialModel);
+  const [selectedYear, setSelectedYear] = useState(initialYear);
+  const [yearRange, setYearRange] = useState(initialYearRange);
   
   // Available options from eBay API
   const [vehicleAspects, setVehicleAspects] = useState<VehicleAspects>({
@@ -32,11 +53,11 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     years: []
   });
   
-  // Additional filters
-  const [priceRange, setPriceRange] = useState({ min: '', max: '' });
-  const [condition, setCondition] = useState<number[]>([]);
-  const [freeShipping, setFreeShipping] = useState(false);
-  const [buyItNowOnly, setBuyItNowOnly] = useState(false);
+  // Additional filters - initialize with passed values
+  const [priceRange, setPriceRange] = useState(initialPriceRange);
+  const [condition, setCondition] = useState<number[]>(initialCondition);
+  const [freeShipping, setFreeShipping] = useState(initialFreeShipping);
+  const [buyItNowOnly, setBuyItNowOnly] = useState(initialBuyItNowOnly);
 
   // Load vehicle aspects on component mount
   useEffect(() => {
@@ -51,8 +72,6 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
           years: aspects.years.length
         });
         setVehicleAspects(aspects);
-        
-        // No success toast - removed the "loaded..." notification
       } catch (error) {
         console.error('Error loading vehicle aspects:', error);
         toast.error('Failed to load vehicle options. Using fallback data.');
@@ -106,16 +125,25 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     
     setIsLoading(true);
     
-    // Build search query with vehicle-specific terms to exclude toys/parts
+    // Build search query - ENHANCED to ensure we get actual vehicles
     const queryParts = [];
     if (selectedMake) queryParts.push(selectedMake);
     if (selectedModel) queryParts.push(selectedModel);
     if (selectedYear) queryParts.push(selectedYear);
     
-    // Add vehicle-specific terms to ensure we get actual vehicles
-    queryParts.push('vehicle', 'automobile', 'car', 'truck');
+    // Add strong vehicle-specific terms and exclusions
+    const vehicleTerms = ['vehicle', 'automobile', 'car', 'truck', 'motor'];
+    const exclusions = [
+      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast',
+      '-matchbox', '-hotwheels', '-hot-wheels', '-miniature', '-scale',
+      '-parts', '-part', '-accessory', '-accessories', '-component',
+      '-keychain', '-poster', '-manual', '-book', '-shirt', '-decal', 
+      '-sticker', '-emblem', '-badge', '-collectible', '-memorabilia',
+      '-remote', '-control', '-rc', '-plastic', '-metal', '-replica',
+      '-figurine', '-action', '-figure', '-kit', '-repair', '-maintenance'
+    ];
     
-    const query = queryParts.join(' ');
+    const query = [...queryParts, ...vehicleTerms, ...exclusions].join(' ');
     
     // Build filters object with enhanced vehicle filtering
     const filters: SearchFilters = {
@@ -123,7 +151,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
       conditionIds: condition,
       freeShipping,
       buyItNowOnly,
-      // Vehicle-specific filters
+      // Vehicle-specific filters with stronger category enforcement
       vehicleAspects: {
         make: selectedMake,
         model: selectedModel,
@@ -136,14 +164,36 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
         min: priceRange.min ? parseFloat(priceRange.min) : undefined,
         max: priceRange.max ? parseFloat(priceRange.max) : undefined,
         currency: 'USD'
-      } : undefined
+      } : undefined,
+      // Enhanced filters to ensure we get actual vehicles
+      searchInDescription: false, // Don't search descriptions to avoid parts/accessories
+      sellerAccountType: 'BUSINESS', // Prefer business sellers for actual vehicles
+      returnsAccepted: true // Actual vehicle sellers typically accept returns
     };
     
     // Convert filters to URL-friendly format
     const filtersParam = encodeURIComponent(JSON.stringify(filters));
     
-    // Navigate to results page with the correct mode
-    navigate(`/results?mode=${mode}&q=${encodeURIComponent(query)}&filters=${filtersParam}`);
+    // Navigate to results page with the correct mode and preserve search state
+    const searchParams = new URLSearchParams({
+      mode,
+      q: query,
+      filters: filtersParam,
+      // Add vehicle search state to URL for back navigation
+      vehicleSearch: 'true',
+      make: selectedMake,
+      model: selectedModel,
+      year: selectedYear,
+      yearFrom: yearRange.from,
+      yearTo: yearRange.to,
+      priceMin: priceRange.min,
+      priceMax: priceRange.max,
+      condition: condition.join(','),
+      freeShipping: freeShipping.toString(),
+      buyItNowOnly: buyItNowOnly.toString()
+    });
+    
+    navigate(`/results?${searchParams.toString()}`);
     
     if (onSearch) {
       onSearch(query, filters);
@@ -211,8 +261,8 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
               <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
                 {mode === 'buy' 
-                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category. Results are filtered to exclude toys, models, and parts.'
-                  : 'Find completed sales of similar vehicles to help price your car or truck for sale.'
+                  ? 'Search for actual driveable vehicles in eBay\'s Cars & Trucks category. Results automatically exclude toys, models, parts, and accessories.'
+                  : 'Find completed sales of similar vehicles to help price your car or truck for sale. Only real vehicle sales data.'
                 }
               </p>
             </div>

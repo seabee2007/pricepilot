@@ -22,7 +22,6 @@ async function getOAuthToken(): Promise<string> {
   }
 
   // Fallback to client credentials flow
-  // If token exists and is still valid, return it
   if (tokenCache && tokenCache.expires_at > Date.now()) {
     return tokenCache.access_token;
   }
@@ -204,22 +203,53 @@ function getCategoryId(category: string): string | null {
   return categoryMap[category] || null;
 }
 
-// Enhanced query processing for automotive searches with stronger exclusions
+// ENHANCED query processing for automotive searches with MUCH stronger exclusions
 function enhanceQueryForCategory(query: string, category: string): string {
-  // For motors category, add strong exclusions to filter out toys, models, and parts
+  // For motors category, add VERY strong exclusions to filter out toys, models, and parts
   if (category === 'motors') {
+    // Comprehensive exclusion list - expanded significantly
     const exclusions = [
-      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast',
-      '-matchbox', '-hotwheels', '-hot-wheels', '-miniature', '-scale',
-      '-parts', '-part', '-accessory', '-accessories', '-component',
-      '-keychain', '-poster', '-manual', '-book', '-shirt', '-decal', 
-      '-sticker', '-emblem', '-badge', '-collectible', '-memorabilia',
-      '-remote', '-control', '-rc', '-plastic', '-metal', '-replica',
-      '-figurine', '-action', '-figure'
+      // Toys and models
+      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast', '-die cast',
+      '-matchbox', '-hotwheels', '-hot-wheels', '-hot wheels', '-miniature', '-miniatures',
+      '-scale', '-replica', '-replicas', '-plastic', '-metal model', '-collectible',
+      '-memorabilia', '-display', '-showcase', '-figurine', '-figurines',
+      
+      // Remote control and electronic toys
+      '-remote', '-control', '-rc', '-r/c', '-radio controlled', '-electronic',
+      '-battery', '-batteries', '-charger', '-controller',
+      
+      // Parts and accessories (but allow some vehicle parts)
+      '-keychain', '-key chain', '-poster', '-posters', '-manual', '-manuals',
+      '-book', '-books', '-shirt', '-shirts', '-clothing', '-apparel',
+      '-decal', '-decals', '-sticker', '-stickers', '-emblem', '-emblems',
+      '-badge', '-badges', '-pin', '-pins', '-patch', '-patches',
+      
+      // Craft and hobby items
+      '-kit', '-kits', '-assembly', '-build', '-craft', '-hobby',
+      '-paint', '-painting', '-brush', '-brushes', '-glue', '-cement',
+      
+      // Non-vehicle items
+      '-action figure', '-action figures', '-statue', '-statues',
+      '-ornament', '-ornaments', '-decoration', '-decorations',
+      '-magnet', '-magnets', '-mug', '-mugs', '-cup', '-cups',
+      
+      // Specific toy brands and types
+      '-tonka', '-maisto', '-burago', '-greenlight', '-autoworld',
+      '-johnny lightning', '-racing champions', '-ertl', '-corgi',
+      '-dinky', '-solido', '-norev', '-minichamps', '-spark',
+      
+      // Size indicators for models
+      '-1:64', '-1:43', '-1:32', '-1:24', '-1:18', '-1:12', '-1:10',
+      '-1/64', '-1/43', '-1/32', '-1/24', '-1/18', '-1/12', '-1/10',
+      '-64th', '-43rd', '-32nd', '-24th', '-18th', '-12th', '-10th'
     ].join(' ');
     
     // Add positive terms to reinforce we want actual vehicles
-    const positiveTerms = 'automobile motor vehicle transportation';
+    const positiveTerms = [
+      'automobile', 'motor vehicle', 'transportation', 'driveable', 'roadworthy',
+      'full size', 'actual', 'real', 'working', 'running', 'driving'
+    ].join(' ');
     
     return `${query} ${positiveTerms} ${exclusions}`;
   }
@@ -437,8 +467,11 @@ Deno.serve(async (req) => {
     searchUrl.searchParams.append('q', enhancedQuery);
     searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
-    // Add category filter if specified and not "all"
-    if (filters.category && filters.category !== 'all') {
+    // FORCE category filter for motors to ensure we stay in Cars & Trucks
+    if (filters.category === 'motors') {
+      searchUrl.searchParams.append('category_ids', '6001'); // Cars & Trucks category
+      console.log('FORCED category filter for motors: 6001 (Cars & Trucks)');
+    } else if (filters.category && filters.category !== 'all') {
       const categoryId = getCategoryId(filters.category);
       if (categoryId) {
         searchUrl.searchParams.append('category_ids', categoryId);
