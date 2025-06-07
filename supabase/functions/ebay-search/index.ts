@@ -17,12 +17,15 @@ async function getOAuthToken(): Promise<string> {
   const oauthToken = Deno.env.get('EBAY_OAUTH_TOKEN');
   
   if (oauthToken) {
-    console.log('Using OAuth application token');
+    console.log('Using stored OAuth application token');
     return oauthToken;
   }
 
+  console.log('No stored OAuth token found, using client credentials flow...');
+
   // Fallback to client credentials flow
   if (tokenCache && tokenCache.expires_at > Date.now()) {
+    console.log('Using cached client credentials token');
     return tokenCache.access_token;
   }
 
@@ -30,17 +33,18 @@ async function getOAuthToken(): Promise<string> {
   const clientSecret = Deno.env.get('EBAY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    throw new Error('Missing eBay API credentials (EBAY_OAUTH_TOKEN or EBAY_CLIENT_ID/EBAY_CLIENT_SECRET)');
+    throw new Error('Missing eBay API credentials (EBAY_CLIENT_ID or EBAY_CLIENT_SECRET)');
   }
 
   const credentials = btoa(`${clientId}:${clientSecret}`);
 
   try {
-    // Use sandbox OAuth endpoint for sandbox credentials
     const oauthUrl = clientId.includes('SBX') 
       ? 'https://api.sandbox.ebay.com/identity/v1/oauth2/token'
       : 'https://api.ebay.com/identity/v1/oauth2/token';
       
+    console.log(`Requesting fresh OAuth token from: ${oauthUrl}`);
+    
     const response = await fetch(oauthUrl, {
       method: 'POST',
       headers: {
@@ -52,22 +56,22 @@ async function getOAuthToken(): Promise<string> {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('eBay OAuth response:', errorText);
+      console.error('OAuth error response:', errorText);
       throw new Error(`eBay OAuth error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('Successfully obtained new OAuth token');
     
-    // Cache the token with expiration
     tokenCache = {
       access_token: data.access_token,
-      expires_at: Date.now() + (data.expires_in * 1000 * 0.9), // 90% of actual expiry time for safety
+      expires_at: Date.now() + (data.expires_in * 1000 * 0.9), // Use 90% of lifetime for safety
     };
 
     return data.access_token;
   } catch (error) {
     console.error('Error fetching eBay OAuth token:', error);
-    throw error;
+    throw new Error(`Failed to obtain OAuth token: ${error.message}. Please check your eBay API credentials.`);
   }
 }
 
