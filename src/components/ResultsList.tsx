@@ -182,9 +182,9 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
         {/* Sort Header */}
         <div className="flex items-center bg-gray-50 dark:bg-gray-900 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          <div className="w-2/5 sm:w-3/5">Item</div>
+          <div className="w-full sm:w-3/5">Item</div>
           <button 
-            className={`w-1/5 sm:w-1/5 flex items-center ${sortField === 'price' ? 'text-blue-600 dark:text-blue-400' : ''}`}
+            className={`hidden sm:flex w-1/5 items-center ${sortField === 'price' ? 'text-blue-600 dark:text-blue-400' : ''}`}
             onClick={() => handleSort('price')}
           >
             Price
@@ -195,7 +195,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
             )}
           </button>
           <button 
-            className={`w-1/5 sm:w-1/5 flex items-center ${sortField === 'shipping' ? 'text-blue-600 dark:text-blue-400' : ''}`}
+            className={`hidden sm:flex w-1/5 items-center ${sortField === 'shipping' ? 'text-blue-600 dark:text-blue-400' : ''}`}
             onClick={() => handleSort('shipping')}
           >
             Shipping
@@ -205,7 +205,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                 <ArrowDown className="ml-1 h-3 w-3" />
             )}
           </button>
-          <div className="w-16 text-center">Save</div>
+          <div className="hidden sm:block w-16 text-center">Save</div>
         </div>
         
         {/* Results */}
@@ -225,27 +225,52 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                 className="flex flex-col sm:flex-row hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-150"
               >
                 <div 
-                  className="flex items-center p-4 w-full sm:w-3/5 cursor-pointer"
+                  className="flex items-start p-4 w-full sm:w-3/5 cursor-pointer"
                   onClick={() => openEbayListing(item.itemWebUrl)}
                 >
-                  <div className="flex-shrink-0 h-16 w-16 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden">
+                  {/* Responsive Image Container */}
+                  <div className="flex-shrink-0 h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 lg:h-40 lg:w-40 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
                     {item.image?.imageUrl ? (
                       <img 
                         src={item.image.imageUrl} 
                         alt={item.title} 
-                        className="h-full w-full object-contain"
+                        className="h-full w-full object-cover hover:scale-105 transition-transform duration-200"
                       />
                     ) : (
-                      <div className="h-full w-full flex items-center justify-center text-gray-400">
+                      <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs text-center">
                         No Image
                       </div>
                     )}
                   </div>
-                  <div className="ml-4 flex-1">
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 hover:underline">
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-sm sm:text-base font-medium text-gray-900 dark:text-gray-100 line-clamp-2 hover:underline mb-2">
                       {truncateText(item.title, 80)}
                     </h3>
-                    <div className="mt-1 flex flex-wrap gap-2">
+                    
+                    {/* Mobile Price/Shipping Info */}
+                    <div className="sm:hidden mb-3 space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-bold text-gray-900 dark:text-white">
+                          {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
+                        </span>
+                        <div className="flex items-center text-sm">
+                          {item.shippingOptions && item.shippingOptions[0]?.shippingCost?.value === 0 ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium flex items-center">
+                              <Truck className="mr-1 h-4 w-4" />
+                              Free Shipping
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 dark:text-gray-400">
+                              + {item.shippingOptions && item.shippingOptions[0]?.shippingCost
+                                ? formatCurrency(item.shippingOptions[0].shippingCost.value, item.shippingOptions[0].shippingCost.currency)
+                                : 'shipping'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2">
                       {item.condition && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
                           {item.condition}
@@ -264,15 +289,41 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                       )}
                     </div>
                   </div>
+                  
+                  {/* Mobile Save Button */}
+                  <div className="sm:hidden ml-2 flex-shrink-0">
+                    <button
+                      onClick={(e) => handleSaveItem(item, e)}
+                      disabled={isSaving}
+                      className={`p-2 rounded-full transition-colors ${
+                        isSaved 
+                          ? 'text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-900/20' 
+                          : 'text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                      } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={isSaved ? 'Remove from saved items' : 'Save this item'}
+                    >
+                      {isSaving ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
+                      ) : isSaved ? (
+                        <Heart className="h-5 w-5 fill-current" />
+                      ) : (
+                        <Heart className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-row sm:flex-col justify-between p-4 w-full sm:w-1/5">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:mb-1">Price:</div>
+                
+                {/* Desktop Price Column */}
+                <div className="hidden sm:flex flex-col justify-center p-4 w-1/5">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Price:</div>
                   <div className="text-base font-bold text-gray-900 dark:text-white">
                     {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
                   </div>
                 </div>
-                <div className="flex flex-row sm:flex-col justify-between p-4 w-full sm:w-1/5">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:mb-1">Shipping:</div>
+                
+                {/* Desktop Shipping Column */}
+                <div className="hidden sm:flex flex-col justify-center p-4 w-1/5">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Shipping:</div>
                   <div className="flex items-center">
                     {item.shippingOptions && item.shippingOptions[0]?.shippingCost?.value === 0 ? (
                       <span className="text-green-600 dark:text-green-400 font-medium flex items-center">
@@ -288,7 +339,9 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                     )}
                   </div>
                 </div>
-                <div className="flex items-center justify-center p-4 w-16">
+                
+                {/* Desktop Save Button */}
+                <div className="hidden sm:flex items-center justify-center p-4 w-16">
                   <button
                     onClick={(e) => handleSaveItem(item, e)}
                     disabled={isSaving}
