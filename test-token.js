@@ -1,8 +1,24 @@
 async function refreshEbayToken() {
   try {
-    // Replace these with your actual credentials from eBay Developer Portal
-    const clientId = 'YOUR_EBAY_CLIENT_ID'; // From https://developer.ebay.com/my/keys
-    const clientSecret = 'YOUR_EBAY_CLIENT_SECRET'; // From https://developer.ebay.com/my/keys
+    // 🔧 REPLACE THESE WITH YOUR ACTUAL CREDENTIALS FROM https://developer.ebay.com/my/keys
+    const clientId = 'YOUR_EBAY_CLIENT_ID'; // Paste your Client ID here
+    const clientSecret = 'YOUR_EBAY_CLIENT_SECRET'; // Paste your Client Secret here
+    
+    if (clientId === 'YOUR_EBAY_CLIENT_ID' || clientSecret === 'YOUR_EBAY_CLIENT_SECRET') {
+      console.log('❌ Please update your eBay credentials in this script:');
+      console.log('');
+      console.log('🔍 Steps:');
+      console.log('   1. Go to https://developer.ebay.com/my/keys');
+      console.log('   2. Copy your Client ID and Client Secret');
+      console.log('   3. Replace the placeholder values above in this script');
+      console.log('   4. Run this script again: node test-token.js');
+      console.log('');
+      console.log('🎯 Make sure your eBay app is configured for:');
+      console.log('   - Application Type: Public Application');
+      console.log('   - Grant Type: Client Credentials Grant');
+      console.log('   - OAuth Scope: https://api.ebay.com/oauth/api_scope');
+      return;
+    }
     
     const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     
@@ -13,6 +29,7 @@ async function refreshEbayToken() {
     
     console.log('🔑 Testing OAuth with endpoint:', oauthUrl);
     console.log('🔑 Client ID (masked):', clientId.substring(0, 8) + '...');
+    console.log('🔑 Environment:', clientId.includes('SBX') ? 'SANDBOX' : 'PRODUCTION');
     
     const response = await fetch(oauthUrl, {
       method: 'POST',
@@ -35,10 +52,22 @@ async function refreshEbayToken() {
       console.log('  - Access token (first 20 chars):', data.access_token.substring(0, 20) + '...');
       console.log('');
       console.log('🔧 Update your Supabase secret with this token:');
-      console.log(`npx supabase secrets set EBAY_OAUTH_TOKEN="${data.access_token}" --project-ref aaootfztturzzvuvdlfy`);
+      console.log(`supabase secrets set EBAY_OAUTH_TOKEN="${data.access_token}" --project-ref aaootfztturzzvuvdlfy`);
+      console.log('');
+      console.log('⏰ Note: This token expires in 2 hours. You can run this script again to refresh it.');
     } else {
       const errorText = await response.text();
       console.error('❌ OAuth failed:', response.status, errorText);
+      
+      if (errorText.includes('invalid_scope')) {
+        console.log('');
+        console.log('💡 SCOPE ERROR HELP:');
+        console.log('   This means your eBay app does not have Browse API access.');
+        console.log('   1. Go to https://developer.ebay.com/my/keys');
+        console.log('   2. Check your app\'s "OAuth Scopes"');
+        console.log('   3. It should include: https://api.ebay.com/oauth/api_scope');
+        console.log('   4. If not, you may need to create a new app or contact eBay support');
+      }
     }
     
   } catch (error) {
