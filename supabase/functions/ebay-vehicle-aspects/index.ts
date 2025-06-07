@@ -13,6 +13,54 @@ let tokenCache: {
   expires_at: number;
 } | null = null;
 
+// Retry fetch with exponential backoff for transient errors
+async function fetchWithRetry(url: string, opts: any, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    console.log(`🔄 Fetch attempt ${i + 1}/${retries}: ${url}`);
+    
+    try {
+      const res = await fetch(url, opts);
+      
+      if (res.ok) {
+        console.log(`✅ Fetch successful on attempt ${i + 1}`);
+        return res;
+      }
+      
+      // Log full error details
+      const errorText = await res.text();
+      console.error(`❌ Fetch attempt ${i + 1} failed:`, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: Object.fromEntries(res.headers.entries()),
+        body: errorText
+      });
+      
+      // If it's a server error (5xx), retry with backoff
+      if (res.status >= 500 && i < retries - 1) {
+        const backoffMs = Math.pow(2, i) * 100; // 100ms, 200ms, 400ms
+        console.log(`⏳ Server error ${res.status}, retrying in ${backoffMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      
+      // If it's a client error (4xx) or we're out of retries, throw immediately
+      throw new Error(`eBay API error ${res.status}: ${errorText}`);
+      
+    } catch (error) {
+      // If it's a network error and we have retries left, continue
+      if (i < retries - 1 && error instanceof TypeError) {
+        const backoffMs = Math.pow(2, i) * 100;
+        console.log(`⏳ Network error, retrying in ${backoffMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      throw error;
+    }
+  }
+  
+  throw new Error('Max retries reached');
+}
+
 async function getOAuthToken(): Promise<string> {
   // Check if we have a cached token that's still valid
   if (tokenCache && tokenCache.expires_at > Date.now()) {
@@ -54,13 +102,24 @@ async function getOAuthToken(): Promise<string> {
 
     const data = await response.json();
     
+    // Log token details for debugging
+    console.log(`✅ OAuth token obtained successfully`);
+    console.log(`  - Token type: ${data.token_type}`);
+    console.log(`  - Expires in: ${data.expires_in} seconds`);
+    console.log(`  - Scope: ${data.scope || 'Not specified'}`);
+    console.log(`  - Token prefix: ${data.access_token?.substring(0, 20)}...`);
+    
+    // Verify we have the correct scope
+    if (data.scope && !data.scope.includes('https://api.ebay.com/oauth/api_scope')) {
+      console.warn(`⚠️ Token scope may be insufficient: ${data.scope}`);
+    }
+    
     // Cache the token (expires in 2 hours, cache for 1.5 hours for safety)
     tokenCache = {
       access_token: data.access_token,
       expires_at: Date.now() + (data.expires_in * 1000 * 0.75), // 75% of actual expiry
     };
     
-    console.log(`✅ OAuth token obtained successfully, expires in ${data.expires_in} seconds`);
     return data.access_token;
   } catch (error) {
     console.error('❌ OAuth token error:', error);
@@ -86,7 +145,7 @@ async function testBasicEbayConnection(token: string): Promise<any> {
   console.log('🌐 Test API Request URL:', url.toString());
 
   try {
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithRetry(url.toString(), {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -94,12 +153,6 @@ async function testBasicEbayConnection(token: string): Promise<any> {
         'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
       },
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Basic Test API Error:', errorText);
-      throw new Error(`Basic test failed: ${response.status} - ${errorText}`);
-    }
 
     const data = await response.json();
     console.log('✅ Basic API test successful!');
@@ -133,7 +186,7 @@ async function searchVehiclesWithAspects(token: string, query: string = 'car'): 
   console.log('🌐 Browse API Request URL:', url.toString());
 
   try {
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithRetry(url.toString(), {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -142,12 +195,6 @@ async function searchVehiclesWithAspects(token: string, query: string = 'car'): 
         'X-EBAY-C-ENDUSERCTX': 'contextualLocation=country%3DUS,zip%3D90210',
       },
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Browse API Error Response:', errorText);
-      throw new Error(`Browse API error: ${response.status} - ${errorText}`);
-    }
 
     const data = await response.json();
     
