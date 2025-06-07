@@ -554,19 +554,17 @@ Deno.serve(async (req) => {
     const searchUrl = new URL(baseUrl);
     
     // Enhance query for specific categories (especially motors to exclude toys/parts)
-    const enhancedQuery = enhanceQueryForCategory(query.trim(), filters.category);
+    const enhancedQuery = enhanceQueryForCategory(query.trim(), category);
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
     searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
-    // Add category filter if specified and not "all"
-    if (filters.category && filters.category !== 'all') {
-      const categoryId = getCategoryId(filters.category);
-      if (categoryId) {
-        searchUrl.searchParams.append('category_ids', categoryId);
-        console.log(`Applied category filter: ${filters.category} -> ${categoryId}`);
-      }
+    // Add category filter if specified and not "all" - ALWAYS add for motors
+    if (category === 'motors' || (category && category !== 'all')) {
+      const categoryId = getCategoryId(category) || '6001'; // Default to Cars & Trucks
+      searchUrl.searchParams.append('category_ids', categoryId);
+      console.log(`Applied category filter: ${category} -> ${categoryId}`);
     }
     
     if (filterString) {
@@ -579,8 +577,11 @@ Deno.serve(async (req) => {
     
     // Add aspect filter for vehicle searches
     if (aspectFilter) {
-      searchUrl.searchParams.append('aspect_filter', aspectFilter);
+      // URL encode the aspect filter as required by eBay API
+      const encodedAspectFilter = encodeURIComponent(aspectFilter);
+      searchUrl.searchParams.append('aspect_filter', encodedAspectFilter);
       console.log(`Applied aspect filter: ${aspectFilter}`);
+      console.log(`URL encoded aspect filter: ${encodedAspectFilter}`);
     }
     
     if (filters.postalCode) {
