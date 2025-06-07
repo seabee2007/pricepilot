@@ -35,43 +35,6 @@ const ResultsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [lowestPrice, setLowestPrice] = useState(0);
-  const [debugInfo, setDebugInfo] = useState<{
-    lastRequestTime: number | null;
-    requestCount: number;
-    isThrottled: boolean;
-  }>({
-    lastRequestTime: null,
-    requestCount: 0,
-    isThrottled: false
-  });
-
-  // 🕵️‍♂️ Monitor items state changes
-  useEffect(() => {
-    console.group('🔄 Items state changed');
-    console.log('New items state:', items);
-    console.log('Items count:', items.length);
-    console.log('Items type:', typeof items);
-    console.log('Is array?', Array.isArray(items));
-    console.groupEnd();
-  }, [items]);
-
-  // Update debug info
-  useEffect(() => {
-    const updateDebugInfo = () => {
-      const now = Date.now();
-      const lastTime = debugInfo.lastRequestTime;
-      const timeSinceLastRequest = lastTime ? now - lastTime : null;
-      const isThrottled = timeSinceLastRequest !== null && timeSinceLastRequest < 5000;
-      
-      setDebugInfo(prev => ({
-        ...prev,
-        isThrottled
-      }));
-    };
-
-    const interval = setInterval(updateDebugInfo, 1000);
-    return () => clearInterval(interval);
-  }, [debugInfo.lastRequestTime]);
 
   useEffect(() => {
     console.log('🚀 useEffect triggered');
@@ -104,13 +67,6 @@ const ResultsPage = () => {
       }
       setLoading(true);
       setError(null);
-      
-      // Update debug info
-      setDebugInfo(prev => ({
-        ...prev,
-        requestCount: prev.requestCount + 1,
-        lastRequestTime: Date.now()
-      }));
       
       try {
         let results: ItemSummary[] = [];
@@ -259,47 +215,6 @@ const ResultsPage = () => {
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Debug Panel */}
-      {config.debug.showDebugPanel && (
-        <div className="mb-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
-            Debug Information
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-gray-600 dark:text-gray-400">Total Requests:</span>
-              <div className="font-mono font-medium">{debugInfo.requestCount}</div>
-            </div>
-            <div>
-              <span className="text-gray-600 dark:text-gray-400">Status:</span>
-              <div className={`font-medium ${loading ? 'text-yellow-600' : 'text-green-600'}`}>
-                {loading ? 'Loading...' : 'Ready'}
-              </div>
-            </div>
-            <div>
-              <span className="text-gray-600 dark:text-gray-400">Rate Limited:</span>
-              <div className={`font-medium ${debugInfo.isThrottled ? 'text-red-600' : 'text-green-600'}`}>
-                {debugInfo.isThrottled ? 'Yes' : 'No'}
-              </div>
-            </div>
-            <div>
-              <span className="text-gray-600 dark:text-gray-400">Last Request:</span>
-              <div className="font-mono text-xs">
-                {debugInfo.lastRequestTime 
-                  ? new Date(debugInfo.lastRequestTime).toLocaleTimeString() 
-                  : 'None'
-                }
-              </div>
-            </div>
-          </div>
-          {debugInfo.isThrottled && (
-            <div className="mt-2 text-xs text-orange-600 dark:text-orange-400">
-              ⏱️ Next request allowed in: {Math.ceil((config.rateLimit.minRequestInterval - (Date.now() - (debugInfo.lastRequestTime || 0))) / 1000)}s
-            </div>
-          )}
         </div>
       )}
 
