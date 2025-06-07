@@ -86,7 +86,7 @@ export async function getVehicleAspects(): Promise<VehicleAspects> {
 }
 
 // Get compatibility properties for a category
-export async function getCompatibilityProperties(categoryId: string = '6001'): Promise<CompatibilityProperty[]> {
+export async function getCompatibilityProperties(categoryId: string = '33559'): Promise<CompatibilityProperty[]> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
@@ -130,7 +130,7 @@ export async function getCompatibilityProperties(categoryId: string = '6001'): P
 // Get property values with progressive filtering
 export async function getPropertyValues(
   property: string,
-  categoryId: string = '6001',
+  categoryId: string = '33559',
   filters?: { [key: string]: string }
 ): Promise<VehicleAspect[]> {
   try {
@@ -184,7 +184,7 @@ export async function getModelsForMake(make: string, year?: string): Promise<Veh
     filters.Year = year;
   }
   
-  return getPropertyValues('Model', '6001', filters);
+  return getPropertyValues('Model', '33559', filters);
 }
 
 // Get trims for specific make/model/year
@@ -201,7 +201,7 @@ export async function getTrimsForVehicle(
     filters.Year = year;
   }
   
-  return getPropertyValues('Trim', '6001', filters);
+  return getPropertyValues('Trim', '33559', filters);
 }
 
 // Get engines for specific make/model/year/trim
@@ -218,7 +218,7 @@ export async function getEnginesForVehicle(
   if (year) filters.Year = year;
   if (trim) filters.Trim = trim;
   
-  return getPropertyValues('Engine', '6001', filters);
+  return getPropertyValues('Engine', '33559', filters);
 }
 
 // Get models for a specific make from cached data (fallback)

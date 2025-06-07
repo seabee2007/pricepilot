@@ -98,7 +98,7 @@ interface VehicleAspects {
 }
 
 // Get compatibility properties for a category
-async function getCompatibilityProperties(token: string, categoryId: string): Promise<CompatibilityProperty[]> {
+export async function getCompatibilityProperties(categoryId: string = '33559'): Promise<CompatibilityProperty[]> {
   const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
   const categoryTreeId = isSandbox ? '100' : '100'; // eBay Motors US for both
   
@@ -112,7 +112,7 @@ async function getCompatibilityProperties(token: string, categoryId: string): Pr
 
   const response = await fetch(url, {
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${await getOAuthToken()}`,
       'Content-Type': 'application/json',
     },
   });
@@ -171,14 +171,14 @@ async function getCompatibilityPropertyValues(
 async function getVehicleAspectsFromTaxonomy(token: string): Promise<VehicleAspects> {
   console.log('Starting Taxonomy API vehicle aspects collection...');
   
-  // Use Cars & Trucks category (6001) for vehicle compatibility
-  // This is the main vehicle category that should support compatibility properties
-  const categoryId = '6001'; // Cars & Trucks - the main vehicle category
+  // Use Car & Truck Parts & Accessories category (33559) for vehicle compatibility
+  // This is the parts category that should support compatibility properties (not the vehicle category 6001)
+  const categoryId = '33559'; // Car & Truck Parts & Accessories - supports parts compatibility
   
   try {
     // First, get the compatibility properties for this category
-    console.log('Getting compatibility properties for Cars & Trucks category (6001)...');
-    const compatibilityProperties = await getCompatibilityProperties(token, categoryId);
+    console.log('Getting compatibility properties for Car & Truck Parts & Accessories category (33559)...');
+    const compatibilityProperties = await getCompatibilityProperties(categoryId);
     console.log('Found compatibility properties:', compatibilityProperties.map(p => p.name));
     
     const results: VehicleAspects = {
@@ -334,7 +334,7 @@ Deno.serve(async (req) => {
     // Handle different actions
     if (action === 'getProperties') {
       // Get compatibility properties for a category
-      const properties = await getCompatibilityProperties(token, categoryId || '6001');
+      const properties = await getCompatibilityProperties(categoryId || '33559');
       return new Response(
         JSON.stringify({ compatibilityProperties: properties }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -343,7 +343,7 @@ Deno.serve(async (req) => {
     
     if (action === 'getPropertyValues') {
       // Get values for a specific property
-      const values = await getCompatibilityPropertyValues(token, categoryId || '6001', compatibilityProperty, filters);
+      const values = await getCompatibilityPropertyValues(token, categoryId || '33559', compatibilityProperty, filters);
       return new Response(
         JSON.stringify({ values: values.map(v => ({ ...v, count: 100 })) }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

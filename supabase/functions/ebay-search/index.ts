@@ -256,7 +256,8 @@ function buildAspectFilter(vehicleAspects: any): string {
     }
   }
   
-  return aspectParts.length > 0 ? `categoryId:6001,${aspectParts.join(',')}` : '';
+  // Don't include categoryId in aspect filter - it's handled separately
+  return aspectParts.join(',');
 }
 
 function buildCompatibilityFilter(compatibility: any): string {
@@ -429,6 +430,9 @@ Deno.serve(async (req) => {
     console.log('🔍 Enhanced query:', enhancedQuery);
     console.log('🏷️ Category:', filters.category);
     console.log('🚗 Vehicle aspects:', filters.vehicleAspects);
+    console.log('🎯 Aspect filter:', aspectFilter);
+    console.log('🔧 Filter string:', filterString);
+    console.log('🔗 Compatibility filter:', compatibilityFilter);
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
@@ -449,6 +453,9 @@ Deno.serve(async (req) => {
       
       // Add vehicle-specific filters to exclude parts/accessories
       vehicleFilters.push('itemLocationCountry:US'); // Focus on US vehicles
+      
+      // Try to exclude obvious parts categories
+      vehicleFilters.push('excludeCategoryIds:{33559,6030,6031,34998}'); // Exclude parts categories
       
       // Combine all filters
       if (vehicleFilters.length > 0) {
