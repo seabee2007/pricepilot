@@ -229,7 +229,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                   onClick={() => openEbayListing(item.itemWebUrl)}
                 >
                   {/* Responsive Image Container */}
-                  <div className="flex-shrink-0 h-20 w-20 sm:h-24 sm:w-24 md:h-32 md:w-32 lg:h-40 lg:w-40 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
+                  <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-32 md:w-32 lg:h-40 lg:w-40 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
                     {item.image?.imageUrl ? (
                       <img 
                         src={item.image.imageUrl} 
