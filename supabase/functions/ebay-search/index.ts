@@ -211,9 +211,9 @@ function getCategoryId(category: string): string | null {
 function enhanceQueryForCategory(query: string, category: string): string {
   // Only enhance queries for motors category
   if (category === 'motors') {
-    // Just add a few key positive terms to reinforce vehicle intent
-    // The category filter (6001) will do the heavy lifting to exclude toys/parts
-    return `${query} vehicle automobile`;
+    // Don't add generic terms - let the category filter (6001) do the work
+    // This prevents over-filtering and allows for better model-specific searches
+    return query;
   }
   
   // For all other categories, return query unchanged

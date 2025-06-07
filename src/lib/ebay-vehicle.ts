@@ -17,33 +17,51 @@ export async function getVehicleDataFromBrowseAPI(): Promise<VehicleAspects> {
       throw new Error('Authentication required');
     }
 
-    // Use eBay Browse API to search for popular vehicles and extract data
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        query: 'vehicle car truck',
-        filters: {
-          category: 'motors',
-          // Get a broad sample to extract vehicle data
-        },
-        pageSize: 200, // Get more results to extract vehicle data
-        mode: 'live'
-      }),
-    });
+    // Use multiple targeted searches to get better vehicle data coverage
+    const searchQueries = [
+      'Ford F-150', // Popular truck
+      'Toyota Camry', // Popular sedan  
+      'Honda Civic', // Popular compact
+      'Chevrolet Silverado', // Popular truck
+      'BMW 3 Series', // Luxury
+      'Dodge Charger' // Muscle car
+    ];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Browse API error:', errorText);
-      throw new Error(`Failed to fetch vehicle data: ${response.status} - ${errorText}`);
+    const allItems: any[] = [];
+    
+    // Search with multiple popular vehicle queries to get diverse data
+    for (const query of searchQueries) {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            query,
+            filters: {
+              category: 'motors',
+            },
+            pageSize: 100, // Get more results per query
+            mode: 'live'
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Browse API response for "${query}":`, data.items?.length || 0, 'vehicles');
+          if (data.items?.length > 0) {
+            allItems.push(...data.items);
+          }
+        }
+      } catch (error) {
+        console.warn(`Search failed for "${query}":`, error);
+      }
     }
 
-    const data = await response.json();
-    console.log('Browse API response received:', data.items?.length || 0, 'vehicles');
+    console.log('Total vehicles from all searches:', allItems.length);
     
     // Extract vehicle data from actual eBay listings
     const makes = new Set<string>();
@@ -51,7 +69,7 @@ export async function getVehicleDataFromBrowseAPI(): Promise<VehicleAspects> {
     const years = new Set<string>();
     
     // Parse vehicle data from listing titles and item specifics
-    (data.items || []).forEach((item: any) => {
+    allItems.forEach((item: any) => {
       const title = item.title || '';
       const itemSpecifics = item.localizedAspects || [];
       
@@ -71,6 +89,22 @@ export async function getVehicleDataFromBrowseAPI(): Promise<VehicleAspects> {
         }
         if (aspect.name === 'Model' && aspect.value) {
           models.add(aspect.value);
+        }
+      });
+      
+      // Try to extract make/model from title using common patterns
+      const titleUpper = title.toUpperCase();
+      
+      // Common makes to look for in titles
+      const commonMakes = ['FORD', 'TOYOTA', 'HONDA', 'CHEVROLET', 'CHEVY', 'BMW', 'MERCEDES', 'AUDI', 'NISSAN', 'DODGE', 'JEEP', 'CADILLAC', 'LEXUS', 'MAZDA', 'SUBARU', 'VOLKSWAGEN', 'VW', 'HYUNDAI', 'KIA', 'BUICK', 'GMC', 'LINCOLN', 'ACURA', 'INFINITI'];
+      
+      commonMakes.forEach(make => {
+        if (titleUpper.includes(make)) {
+          // Normalize make names
+          const normalizedMake = make === 'CHEVY' ? 'Chevrolet' : 
+                                  make === 'VW' ? 'Volkswagen' :
+                                  make.charAt(0) + make.slice(1).toLowerCase();
+          makes.add(normalizedMake);
         }
       });
     });
@@ -142,69 +176,112 @@ export async function getModelsForMake(make: string, year?: string): Promise<Veh
       throw new Error('Authentication required');
     }
 
-    // Build search query for specific make
-    let query = make;
-    if (year) {
-      query += ` ${year}`;
+    // Use multiple search approaches for better model coverage
+    const searchQueries = [
+      make, // Just the make name
+      `${make} ${year || ''}`.trim(), // Make with year if provided
+    ];
+    
+    // Add common models for popular makes to search queries
+    const popularModels = getCommonModelsForMake(make);
+    if (popularModels.length > 0) {
+      // Add searches for the most popular models
+      const topModels = popularModels.slice(0, 3);
+      topModels.forEach(model => {
+        searchQueries.push(`${make} ${model.value}`);
+      });
     }
 
-    // Use eBay Browse API to search for vehicles of this make
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        query,
-        filters: {
-          category: 'motors',
-        },
-        pageSize: 200, // Get more results to extract model data
-        mode: 'live'
-      }),
-    });
+    const allItems: any[] = [];
+    const foundModels = new Set<string>();
+    
+    // Search with multiple queries to get diverse model data
+    for (const query of searchQueries) {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            query,
+            filters: {
+              category: 'motors',
+            },
+            pageSize: 50, // Reasonable number per query
+            mode: 'live'
+          }),
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Browse API error:', errorText);
-      throw new Error(`Failed to fetch models: ${response.status} - ${errorText}`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Browse API response for "${query}":`, data.items?.length || 0, 'vehicles');
+          if (data.items?.length > 0) {
+            allItems.push(...data.items);
+          }
+        }
+      } catch (error) {
+        console.warn(`Search failed for "${query}":`, error);
+      }
     }
 
-    const data = await response.json();
-    console.log(`Browse API response for ${make}:`, data.items?.length || 0, 'vehicles');
+    console.log(`Total vehicles found for ${make}:`, allItems.length);
     
     // Extract models from actual eBay listings
-    const models = new Set<string>();
-    
-    // Parse model data from listing titles and item specifics
-    (data.items || []).forEach((item: any) => {
+    allItems.forEach((item: any) => {
       const title = item.title || '';
       const itemSpecifics = item.localizedAspects || [];
       
       // Extract from item specifics if available
       itemSpecifics.forEach((aspect: any) => {
         if (aspect.name === 'Model' && aspect.value) {
-          models.add(aspect.value);
+          foundModels.add(aspect.value);
+        }
+        if (aspect.name === 'Make' && aspect.value?.toLowerCase() === make.toLowerCase()) {
+          // This confirms it's the right make
         }
       });
       
-      // Also try to extract model from title
-      // This is basic pattern matching - could be enhanced
-      const titleWords = title.toLowerCase().split(/\s+/);
-      const makeIndex = titleWords.findIndex((word: string) => word.includes(make.toLowerCase()));
-      if (makeIndex >= 0 && makeIndex < titleWords.length - 1) {
-        // Look for potential model name after make
-        const potentialModel = titleWords[makeIndex + 1];
-        if (potentialModel && potentialModel.length > 1) {
-          models.add(potentialModel.charAt(0).toUpperCase() + potentialModel.slice(1));
+      // Extract model from title using pattern matching
+      const titleUpper = title.toUpperCase();
+      const makeUpper = make.toUpperCase();
+      
+      // Find the make in the title and try to extract the model that follows
+      const makeIndex = titleUpper.indexOf(makeUpper);
+      if (makeIndex >= 0) {
+        // Look for model patterns after the make
+        const afterMake = title.substring(makeIndex + make.length).trim();
+        const words = afterMake.split(/\s+/);
+        
+        // Common model patterns to extract
+        if (words.length > 0) {
+          let potentialModel = words[0];
+          
+          // Handle multi-word models (e.g., "F-150", "3 Series")
+          if (words.length > 1) {
+            const secondWord = words[1];
+            // Combine if it looks like a multi-part model name
+            if (secondWord.match(/^(Series|Class|\d+|[A-Z]+)$/i)) {
+              potentialModel = `${potentialModel} ${secondWord}`;
+            }
+          }
+          
+          // Clean up the model name
+          potentialModel = potentialModel
+            .replace(/[^\w\s-]/g, '') // Remove special chars except hyphens
+            .trim();
+          
+          if (potentialModel && potentialModel.length > 1) {
+            foundModels.add(potentialModel);
+          }
         }
       }
     });
     
     // Convert to VehicleAspect format
-    const modelsList = Array.from(models)
+    const modelsList = Array.from(foundModels)
       .filter(model => model.length > 1) // Filter out single characters
       .sort()
       .map(model => ({
@@ -216,9 +293,17 @@ export async function getModelsForMake(make: string, year?: string): Promise<Veh
     
     console.log(`Found ${modelsList.length} models for ${make} from Browse API`);
     
-    // If we found models, return them, otherwise fallback to common models
+    // If we found models from API, return them combined with common models
     if (modelsList.length > 0) {
-      return modelsList;
+      const commonModels = getCommonModelsForMake(make);
+      const combinedModels = [...modelsList, ...commonModels]
+        .filter((model, index, self) => 
+          index === self.findIndex(m => m.value === model.value)
+        )
+        .sort((a, b) => a.displayName.localeCompare(b.displayName));
+      
+      console.log(`Combined total: ${combinedModels.length} models for ${make}`);
+      return combinedModels;
     } else {
       console.log(`No models found via Browse API for ${make}, using common models`);
       return getCommonModelsForMake(make);
