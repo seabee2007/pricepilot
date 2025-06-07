@@ -529,7 +529,19 @@ Deno.serve(async (req) => {
     };
 
     const filterString = buildFilterString(searchFilters);
-    const compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
+    
+    // Handle compatibility filter - support both object and string formats
+    let compatibilityFilter = '';
+    if (filters.compatibilityFilter) {
+      if (typeof filters.compatibilityFilter === 'string') {
+        // Direct string format (from searchVehicleCompatibleParts)
+        compatibilityFilter = filters.compatibilityFilter;
+      } else {
+        // Object format (from existing compatibility search)
+        compatibilityFilter = buildCompatibilityFilter(filters.compatibilityFilter);
+      }
+    }
+    
     const aspectFilter = buildAspectFilter(vehicleData);
     
     // Debug logging for vehicle search
@@ -561,7 +573,7 @@ Deno.serve(async (req) => {
     
     // Add category filter if specified and not "all" - ALWAYS add for motors
     if (category === 'motors' || (category && category !== 'all')) {
-      const categoryId = getCategoryId(category) || '6001'; // Default to Cars & Trucks
+      const categoryId = getCategoryId(category) || category || '6001'; // Use direct ID if not found in map, default to Cars & Trucks
       searchUrl.searchParams.append('category_ids', categoryId);
       console.log(`Applied category filter: ${category} -> ${categoryId}`);
     }

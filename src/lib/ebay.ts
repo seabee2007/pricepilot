@@ -901,3 +901,152 @@ export async function getMultipleItems(
     }
   });
 }
+
+/**
+ * Search for parts/accessories compatible with a specific vehicle
+ * Uses eBay Browse API compatibility_filter - based on Sample 10
+ * Format: Year:2018;Make:BMW;Model:318i;Trim:Executive Sedan 4-Door;Engine:1.5L 1499CC l3 GAS DOHC Turbocharged
+ */
+export async function searchVehicleCompatibleParts(
+  query: string,
+  vehicle: {
+    year: string;
+    make: string;
+    model: string;
+    trim?: string;
+    engine?: string;
+    submodel?: string; // For motorcycles
+    vehicleType?: 'car' | 'truck' | 'motorcycle';
+  },
+  categoryId: string = '33559', // Car & Truck Brakes & Brake Parts by default
+  pageSize: number = 50,
+  pageOffset: number = 0
+): Promise<ItemSummary[]> {
+  const requestKey = createRequestKey('searchVehicleCompatibleParts', { query, vehicle, categoryId, pageSize, pageOffset });
+  
+  return makeThrottledRequest(requestKey, async () => {
+    try {
+      console.log('🔍 Searching vehicle-compatible parts:', { query, vehicle });
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        throw new Error('Authentication required. Please sign in.');
+      }
+
+      // Build compatibility filter in the exact format from Sample 10
+      const compatibilityParts: string[] = [];
+      
+      if (vehicle.year) compatibilityParts.push(`Year:${vehicle.year}`);
+      if (vehicle.make) compatibilityParts.push(`Make:${vehicle.make}`);
+      if (vehicle.model) compatibilityParts.push(`Model:${vehicle.model}`);
+      
+      if (vehicle.vehicleType === 'motorcycle') {
+        if (vehicle.submodel) compatibilityParts.push(`Submodel:${vehicle.submodel}`);
+      } else {
+        // For cars and trucks - use all available details for best matching
+        if (vehicle.trim) compatibilityParts.push(`Trim:${vehicle.trim}`);
+        if (vehicle.engine) compatibilityParts.push(`Engine:${vehicle.engine}`);
+      }
+      
+      const compatibilityFilter = compatibilityParts.join(';');
+      
+      console.log('🔧 Built compatibility filter:', compatibilityFilter);
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+      };
+
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ebay-search`;
+      
+      // Build filters for parts search
+      const filters = {
+        category: categoryId,
+        compatibilityFilter: compatibilityFilter
+      };
+
+      console.log('🌐 Making parts compatibility request');
+      console.log('📦 Request payload:', {
+        query: query.trim(),
+        filters,
+        pageSize: Math.min(Math.max(pageSize, 1), 200),
+        pageOffset: Math.max(pageOffset, 0),
+        mode: 'live'
+      });
+
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          query: query.trim(),
+          filters,
+          pageSize: Math.min(Math.max(pageSize, 1), 200),
+          pageOffset: Math.max(pageOffset, 0),
+          mode: 'live'
+        }),
+      });
+
+      console.log('📡 Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Response not ok. Error text:', errorText);
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ Parsed error data:', errorData);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(errorData.error || 'Failed to search vehicle-compatible parts');
+        } catch (parseError) {
+          console.error('❌ Could not parse error response:', parseError);
+          
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please sign in again.');
+          }
+          
+          throw new Error(`eBay API error: ${response.status} - ${errorText}`);
+        }
+      }
+
+      const data = await response.json();
+      console.log('✅ Vehicle Parts Compatibility Response received:', data);
+      console.log('  - Items found:', data.items?.length || 0);
+      
+      // Log compatibility information if available
+      if (data.items && data.items.length > 0 && data.items[0].compatibilityMatch) {
+        console.log('  - Compatibility match:', data.items[0].compatibilityMatch);
+        console.log('  - Compatibility properties:', data.items[0].compatibilityProperties?.length || 0);
+      }
+      
+      return data.items || [];
+    } catch (error) {
+      console.error('💥 Error in searchVehicleCompatibleParts:', error);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Get automotive parts categories for use with vehicle compatibility search
+ * Based on Sample 10 and common automotive part categories
+ */
+export function getAutomotivePartsCategories(): { id: string; name: string; description: string }[] {
+  return [
+    { id: '33559', name: 'Car & Truck Brakes & Brake Parts', description: 'Brake pads, rotors, calipers, brake lines' },
+    { id: '33567', name: 'Engine & Engine Parts', description: 'Engine components, gaskets, filters' },
+    { id: '33649', name: 'Brakes & Brake Parts', description: 'All brake-related components' },
+    { id: '33675', name: 'Electrical Components', description: 'Wiring, sensors, electrical parts' },
+    { id: '33654', name: 'Cooling System', description: 'Radiators, thermostats, cooling parts' },
+    { id: '33710', name: 'Transmission & Drivetrain', description: 'Transmission parts, driveshaft components' },
+    { id: '33696', name: 'Suspension & Steering', description: 'Shocks, struts, steering components' },
+    { id: '6750', name: 'Tires & Wheels', description: 'Tires, rims, wheel accessories' },
+    { id: '33564', name: 'Body Parts', description: 'Bumpers, fenders, body panels' },
+    { id: '33588', name: 'Interior', description: 'Seats, dashboard, interior accessories' },
+    { id: '33580', name: 'Exterior', description: 'Mirrors, trim, exterior accessories' }
+  ];
+}
