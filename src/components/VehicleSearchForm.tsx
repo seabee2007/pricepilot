@@ -125,33 +125,24 @@ const VehicleSearchForm = ({
     
     setIsLoading(true);
     
-    // Build search query - ENHANCED to ensure we get actual vehicles
+    // Build CLEAN search query - much simpler approach
     const queryParts = [];
     if (selectedMake) queryParts.push(selectedMake);
     if (selectedModel) queryParts.push(selectedModel);
     if (selectedYear) queryParts.push(selectedYear);
     
-    // Add strong vehicle-specific terms and exclusions
-    const vehicleTerms = ['vehicle', 'automobile', 'car', 'truck', 'motor'];
-    const exclusions = [
-      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast',
-      '-matchbox', '-hotwheels', '-hot-wheels', '-miniature', '-scale',
-      '-parts', '-part', '-accessory', '-accessories', '-component',
-      '-keychain', '-poster', '-manual', '-book', '-shirt', '-decal', 
-      '-sticker', '-emblem', '-badge', '-collectible', '-memorabilia',
-      '-remote', '-control', '-rc', '-plastic', '-metal', '-replica',
-      '-figurine', '-action', '-figure', '-kit', '-repair', '-maintenance'
-    ];
+    // Simple, clean query without excessive exclusions
+    const query = queryParts.join(' ');
     
-    const query = [...queryParts, ...vehicleTerms, ...exclusions].join(' ');
+    console.log('🚗 Vehicle search query:', query);
     
-    // Build filters object with enhanced vehicle filtering
+    // Build filters object with STRONG category enforcement
     const filters: SearchFilters = {
-      category: 'motors', // Cars & Trucks category
+      category: 'motors', // This will force Cars & Trucks category (6001)
       conditionIds: condition,
       freeShipping,
       buyItNowOnly,
-      // Vehicle-specific filters with stronger category enforcement
+      // Vehicle-specific filters - this is the key to getting actual vehicles
       vehicleAspects: {
         make: selectedMake,
         model: selectedModel,
@@ -170,6 +161,8 @@ const VehicleSearchForm = ({
       sellerAccountType: 'BUSINESS', // Prefer business sellers for actual vehicles
       returnsAccepted: true // Actual vehicle sellers typically accept returns
     };
+    
+    console.log('🚗 Vehicle search filters:', filters);
     
     // Convert filters to URL-friendly format
     const filtersParam = encodeURIComponent(JSON.stringify(filters));

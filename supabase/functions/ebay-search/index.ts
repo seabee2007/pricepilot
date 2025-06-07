@@ -203,55 +203,13 @@ function getCategoryId(category: string): string | null {
   return categoryMap[category] || null;
 }
 
-// ENHANCED query processing for automotive searches with MUCH stronger exclusions
+// SIMPLIFIED query processing for automotive searches - MUCH cleaner approach
 function enhanceQueryForCategory(query: string, category: string): string {
-  // For motors category, add VERY strong exclusions to filter out toys, models, and parts
+  // For motors category, we rely on category filtering rather than complex exclusions
   if (category === 'motors') {
-    // Comprehensive exclusion list - expanded significantly
-    const exclusions = [
-      // Toys and models
-      '-toy', '-toys', '-model', '-models', '-diecast', '-die-cast', '-die cast',
-      '-matchbox', '-hotwheels', '-hot-wheels', '-hot wheels', '-miniature', '-miniatures',
-      '-scale', '-replica', '-replicas', '-plastic', '-metal model', '-collectible',
-      '-memorabilia', '-display', '-showcase', '-figurine', '-figurines',
-      
-      // Remote control and electronic toys
-      '-remote', '-control', '-rc', '-r/c', '-radio controlled', '-electronic',
-      '-battery', '-batteries', '-charger', '-controller',
-      
-      // Parts and accessories (but allow some vehicle parts)
-      '-keychain', '-key chain', '-poster', '-posters', '-manual', '-manuals',
-      '-book', '-books', '-shirt', '-shirts', '-clothing', '-apparel',
-      '-decal', '-decals', '-sticker', '-stickers', '-emblem', '-emblems',
-      '-badge', '-badges', '-pin', '-pins', '-patch', '-patches',
-      
-      // Craft and hobby items
-      '-kit', '-kits', '-assembly', '-build', '-craft', '-hobby',
-      '-paint', '-painting', '-brush', '-brushes', '-glue', '-cement',
-      
-      // Non-vehicle items
-      '-action figure', '-action figures', '-statue', '-statues',
-      '-ornament', '-ornaments', '-decoration', '-decorations',
-      '-magnet', '-magnets', '-mug', '-mugs', '-cup', '-cups',
-      
-      // Specific toy brands and types
-      '-tonka', '-maisto', '-burago', '-greenlight', '-autoworld',
-      '-johnny lightning', '-racing champions', '-ertl', '-corgi',
-      '-dinky', '-solido', '-norev', '-minichamps', '-spark',
-      
-      // Size indicators for models
-      '-1:64', '-1:43', '-1:32', '-1:24', '-1:18', '-1:12', '-1:10',
-      '-1/64', '-1/43', '-1/32', '-1/24', '-1/18', '-1/12', '-1/10',
-      '-64th', '-43rd', '-32nd', '-24th', '-18th', '-12th', '-10th'
-    ].join(' ');
-    
-    // Add positive terms to reinforce we want actual vehicles
-    const positiveTerms = [
-      'automobile', 'motor vehicle', 'transportation', 'driveable', 'roadworthy',
-      'full size', 'actual', 'real', 'working', 'running', 'driving'
-    ].join(' ');
-    
-    return `${query} ${positiveTerms} ${exclusions}`;
+    // Just add a few key positive terms to reinforce vehicle intent
+    // The category filter (6001) will do the heavy lifting to exclude toys/parts
+    return `${query} vehicle automobile`;
   }
   
   return query;
@@ -460,37 +418,62 @@ Deno.serve(async (req) => {
     
     const searchUrl = new URL(baseUrl);
     
-    // Enhance query for specific categories (especially motors to exclude toys/parts)
+    // Enhance query for specific categories (much simpler now)
     const enhancedQuery = enhanceQueryForCategory(query.trim(), filters.category);
+    
+    console.log('🔍 Enhanced query:', enhancedQuery);
+    console.log('🏷️ Category:', filters.category);
+    console.log('🚗 Vehicle aspects:', filters.vehicleAspects);
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
     searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
     
-    // FORCE category filter for motors to ensure we stay in Cars & Trucks
+    // CRITICAL: Force category filter for motors to ensure we stay in Cars & Trucks
     if (filters.category === 'motors') {
       searchUrl.searchParams.append('category_ids', '6001'); // Cars & Trucks category
-      console.log('FORCED category filter for motors: 6001 (Cars & Trucks)');
+      console.log('🚗 FORCED category filter for motors: 6001 (Cars & Trucks)');
+      
+      // For vehicle searches, add additional filters to ensure we get actual vehicles
+      const vehicleFilters = [];
+      
+      // Add the existing filter string
+      if (filterString) {
+        vehicleFilters.push(filterString);
+      }
+      
+      // Add vehicle-specific filters to exclude parts/accessories
+      vehicleFilters.push('itemLocationCountry:US'); // Focus on US vehicles
+      
+      // Combine all filters
+      if (vehicleFilters.length > 0) {
+        searchUrl.searchParams.set('filter', vehicleFilters.join(','));
+      }
+      
     } else if (filters.category && filters.category !== 'all') {
       const categoryId = getCategoryId(filters.category);
       if (categoryId) {
         searchUrl.searchParams.append('category_ids', categoryId);
         console.log(`Applied category filter: ${filters.category} -> ${categoryId}`);
       }
-    }
-    
-    if (filterString) {
-      searchUrl.searchParams.append('filter', filterString);
+      
+      if (filterString) {
+        searchUrl.searchParams.append('filter', filterString);
+      }
+    } else {
+      if (filterString) {
+        searchUrl.searchParams.append('filter', filterString);
+      }
     }
     
     if (compatibilityFilter) {
       searchUrl.searchParams.append('compatibility_filter', compatibilityFilter);
     }
     
-    // Add aspect filter for vehicle searches
+    // Add aspect filter for vehicle searches - this is KEY for getting actual vehicles
     if (aspectFilter) {
       searchUrl.searchParams.append('aspect_filter', aspectFilter);
-      console.log(`Applied aspect filter: ${aspectFilter}`);
+      console.log(`🎯 Applied aspect filter: ${aspectFilter}`);
     }
     
     if (filters.postalCode) {
@@ -505,7 +488,7 @@ Deno.serve(async (req) => {
       searchUrl.searchParams.append('offset', pageOffset.toString());
     }
 
-    console.log('eBay API Request URL:', searchUrl.toString());
+    console.log('🌐 eBay API Request URL:', searchUrl.toString());
 
     const response = await fetch(searchUrl.toString(), {
       headers: {
@@ -522,7 +505,7 @@ Deno.serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log('eBay API Response:', JSON.stringify(data, null, 2));
+    console.log('✅ eBay API Response received. Items found:', data.itemSummaries?.length || 0);
 
     // Process items to include compatibility information and normalize data types
     const processedItems = (data.itemSummaries || []).map((item: any) => ({
@@ -554,6 +537,8 @@ Deno.serve(async (req) => {
         compatibilityProperties: item.compatibilityProperties || []
       } : undefined
     }));
+
+    console.log(`📊 Processed ${processedItems.length} items for return`);
 
     return new Response(
       JSON.stringify({ 
