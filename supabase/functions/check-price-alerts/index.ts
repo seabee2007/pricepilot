@@ -203,7 +203,7 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
                 
                 <p>This is a great time to check out the latest listings and potentially make a purchase!</p>
                 
-                <a href="https://pricepilot.app/results?q=${encodeURIComponent(query)}&mode=buy" class="button">
+                <a href="https://pricepilot.online/results?q=${encodeURIComponent(query)}&mode=buy" class="button">
                   View Current Listings →
                 </a>
               </div>
