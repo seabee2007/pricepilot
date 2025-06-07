@@ -47,16 +47,25 @@ const SavedSearchesPage = () => {
     }
 
     setTestingAlerts(true);
+    console.log('🧪 Starting manual price alert test...');
+    
     try {
       const result = await triggerPriceAlertsManually();
+      console.log('🧪 Test result:', result);
+      
       if (result.success) {
-        toast.success('Price alerts check completed! Check your email if any alerts were triggered.');
+        toast.success(`✅ ${result.message}`);
+        console.log('✅ Price alerts test successful');
       } else {
-        toast.error('Failed to trigger price alerts: ' + result.message);
+        toast.error(`❌ ${result.message}`);
+        console.error('❌ Price alerts test failed:', result.message);
       }
     } catch (err) {
-      console.error('Error testing price alerts:', err);
-      toast.error('Failed to test price alerts. Please try again.');
+      console.error('💥 Error testing price alerts:', err);
+      
+      // Show the specific error message if available
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      toast.error(`Failed to test price alerts: ${errorMessage}`);
     } finally {
       setTestingAlerts(false);
     }
@@ -117,6 +126,18 @@ const SavedSearchesPage = () => {
                 We'll monitor eBay prices and email you when items drop below your threshold.
                 Use the "Test Price Alerts" button to manually check all your saved searches.
               </p>
+              
+              {/* Debug Info */}
+              <details className="mt-3">
+                <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer hover:underline">
+                  🔧 Debug Info (click to expand)
+                </summary>
+                <div className="mt-2 text-xs text-blue-600 dark:text-blue-400 font-mono">
+                  <div>Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing'}</div>
+                  <div>Supabase Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}</div>
+                  <div>Function URL: {import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-price-alerts</div>
+                </div>
+              </details>
             </div>
           </div>
         </div>

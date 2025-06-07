@@ -429,32 +429,130 @@ export async function getUserOrders() {
 // Test function to manually trigger price alerts
 export async function triggerPriceAlertsManually(): Promise<{ success: boolean; message: string }> {
   try {
-    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-price-alerts`;
+    console.log('🧪 Triggering price alerts manually...');
+
+    // Check environment variables
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('Missing environment variables:', { 
+        hasUrl: !!supabaseUrl, 
+        hasAnonKey: !!supabaseAnonKey 
+      });
+      return { 
+        success: false, 
+        message: 'Environment variables not configured. Please check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' 
+      };
+    }
+
+    const functionUrl = `${supabaseUrl}/functions/v1/check-price-alerts`;
+    console.log('📡 Function URL:', functionUrl);
     
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.access_token) {
-      throw new Error('Authentication required to trigger price alerts');
+      return { 
+        success: false, 
+        message: 'Authentication required to trigger price alerts. Please sign in first.' 
+      };
     }
 
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    });
+    console.log('🔑 Authentication token available, making request...');
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+    // Try using Supabase client first (better for CORS/auth)
+    try {
+      console.log('📡 Attempting to invoke via Supabase client...');
+      const { data, error } = await supabase.functions.invoke('check-price-alerts', {
+        body: { 
+          trigger: 'manual',
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      if (error) {
+        console.error('❌ Supabase client error:', error);
+        throw error;
+      }
+
+      console.log('✅ Supabase client success:', data);
+      return { 
+        success: true, 
+        message: data?.message || 'Price alerts triggered successfully via Supabase client' 
+      };
+      
+    } catch (supabaseError) {
+      console.error('❌ Supabase client failed, falling back to fetch...', supabaseError);
+      
+      // Fallback to direct fetch
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        // Add some basic data to the request
+        body: JSON.stringify({ 
+          trigger: 'manual',
+          timestamp: new Date().toISOString()
+        }),
+      });
+
+      console.log('📥 Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+          console.error('❌ Response error data:', errorData);
+        } catch (parseError) {
+          console.error('❌ Could not parse error response');
+          // Try to get text response
+          try {
+            const errorText = await response.text();
+            console.error('❌ Error response text:', errorText);
+            if (errorText) {
+              errorMessage = errorText;
+            }
+          } catch (textError) {
+            console.error('❌ Could not get error response text');
+          }
+        }
+        
+        return { 
+          success: false, 
+          message: `Request failed: ${errorMessage}` 
+        };
+      }
+
+      const data = await response.json();
+      console.log('✅ Success response:', data);
+      
+      return { 
+        success: true, 
+        message: data.message || 'Price alerts triggered successfully' 
+      };
     }
-
-    const data = await response.json();
-    return data;
+    
   } catch (error) {
-    console.error('Error triggering price alerts:', error);
-    throw error;
+    console.error('💥 Error triggering price alerts:', error);
+    
+    // Provide more specific error messages
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      return { 
+        success: false, 
+        message: 'Network error: Unable to connect to the server. This might be due to CORS issues in development or the Edge Function not being deployed.' 
+      };
+    }
+    
+    return { 
+      success: false, 
+      message: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}` 
+    };
   }
 }
