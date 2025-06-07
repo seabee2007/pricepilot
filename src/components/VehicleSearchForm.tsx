@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Car, Search, ChevronDown, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -43,9 +43,9 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     const loadAspects = async () => {
       setLoadingAspects(true);
       try {
-        console.log('Loading real-time vehicle aspects from eBay Browse API...');
+        console.log('Loading vehicle aspects from eBay Browse API...');
         const aspects = await getVehicleAspects();
-        console.log('Real-time vehicle aspects loaded:', {
+        console.log('Vehicle aspects loaded:', {
           makes: aspects.makes.length,
           models: aspects.models.length,
           years: aspects.years.length
@@ -75,7 +75,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
   const handleRefreshAspects = async () => {
     setRefreshingAspects(true);
     try {
-      console.log('Refreshing real-time vehicle aspects...');
+      console.log('Refreshing vehicle aspects...');
       const aspects = await refreshVehicleAspects();
       setVehicleAspects(aspects);
       toast.success('Vehicle data refreshed with latest eBay inventory!');
@@ -113,7 +113,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
     
     setIsLoading(true);
     
-    // Build search query with vehicle-specific terms to exclude toys/parts
+    // Build search query with vehicle-specific terms
     const queryParts = [];
     if (selectedMake) queryParts.push(selectedMake);
     if (selectedModel) queryParts.push(selectedModel);
@@ -203,7 +203,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
             onClick={handleRefreshAspects}
             disabled={refreshingAspects || loadingAspects}
             className={`flex items-center ${mode === 'buy' ? 'text-blue-200 hover:text-white' : 'text-green-200 hover:text-white'} transition-colors disabled:opacity-50`}
-            title="Refresh vehicle data from eBay"
+            title="Refresh vehicle data from eBay Browse API"
           >
             <RefreshCw className={`h-4 w-4 ${refreshingAspects ? 'animate-spin' : ''}`} />
           </button>
@@ -218,7 +218,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <Car className={`h-5 w-5 ${mode === 'buy' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'} mr-2`} />
               <p className={`${mode === 'buy' ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'} text-sm`}>
                 {mode === 'buy' 
-                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category using real-time inventory data.'
+                  ? 'Search for actual vehicles in eBay\'s Cars & Trucks category using real-time Browse API data.'
                   : 'Find completed sales of similar vehicles using real-time market data to help price your car or truck.'
                 }
               </p>
@@ -276,7 +276,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={loadingAspects || refreshingAspects}
+                disabled={loadingAspects || refreshingAspects || !selectedMake}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Model</option>
@@ -290,7 +290,7 @@ const VehicleSearchForm = ({ mode, onSearch, onBack }: VehicleSearchFormProps) =
             </div>
             {selectedMake && availableModels.length === 0 && (
               <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
-                No specific models found for {selectedMake}. Showing all models.
+                No specific models found for {selectedMake}. Try selecting a different make.
               </p>
             )}
             {selectedMake && availableModels.length > 0 && (
