@@ -4,8 +4,9 @@ import { Car, Search, ChevronDown, Loader2, ArrowLeft, RefreshCw } from 'lucide-
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './ui/Button';
 import { SearchFilters, SearchMode } from '../types';
-import { getVehicleAspects, VehicleAspects, refreshVehicleAspects, getModelsForMake } from '../lib/ebay-vehicle';
+import { getVehicleAspects, refreshVehicleAspects, getModelsForMakeFromCache } from '../lib/ebay-vehicle';
 import toast from 'react-hot-toast';
+import { VehicleAspects } from '../types';
 
 interface VehicleSearchFormProps {
   mode: SearchMode;
@@ -50,7 +51,8 @@ const VehicleSearchForm = ({
   const [vehicleAspects, setVehicleAspects] = useState<VehicleAspects>({
     makes: [],
     models: [],
-    years: []
+    years: [],
+    compatibilityProperties: []
   });
   
   // Additional filters - initialize with passed values
@@ -100,7 +102,7 @@ const VehicleSearchForm = ({
   };
 
   // Get available models based on selected make
-  const availableModels = getModelsForMake(vehicleAspects, selectedMake);
+  const availableModels = Array.isArray(vehicleAspects?.models) ? getModelsForMakeFromCache(vehicleAspects, selectedMake) : [];
 
   // Handle make selection change
   const handleMakeChange = (make: string) => {
@@ -108,7 +110,7 @@ const VehicleSearchForm = ({
     setSelectedModel(''); // Reset model when make changes
     
     // Log available models for debugging
-    const models = getModelsForMake(vehicleAspects, make);
+    const models = Array.isArray(vehicleAspects?.models) ? getModelsForMakeFromCache(vehicleAspects, make) : [];
     console.log(`Selected make: ${make}, Available models: ${models.length}`);
     if (models.length > 0) {
       console.log('Sample models:', models.slice(0, 5).map(m => m.displayName));
@@ -293,9 +295,9 @@ const VehicleSearchForm = ({
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Make</option>
-                {vehicleAspects.makes.map((make) => (
+                {(vehicleAspects.makes || []).map((make) => (
                   <option key={make.value} value={make.value}>
-                    {make.displayName} ({make.count.toLocaleString()})
+                    {make.displayName} ({make.count})
                   </option>
                 ))}
               </select>
@@ -316,11 +318,18 @@ const VehicleSearchForm = ({
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Model</option>
-                {availableModels.map((model) => (
-                  <option key={`${model.value}-${model.make || 'generic'}`} value={model.value}>
-                    {model.displayName} ({model.count.toLocaleString()})
+                {(availableModels || []).map((model) => (
+                  <option key={model.value} value={model.value}>
+                    {model.displayName}
+                    {model.make && model.make !== selectedMake ? ` (${model.make})` : ''}
+                    {model.count && ` (${model.count})`}
                   </option>
                 ))}
+                {availableModels.length === 0 && selectedMake && (
+                  <option value="" disabled>
+                    No models found for {selectedMake}
+                  </option>
+                )}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
             </div>
@@ -349,9 +358,9 @@ const VehicleSearchForm = ({
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white appearance-none disabled:opacity-50"
               >
                 <option value="">Any Year</option>
-                {vehicleAspects.years.map((year) => (
+                {(vehicleAspects.years || []).map((year) => (
                   <option key={year.value} value={year.value}>
-                    {year.displayName} ({year.count.toLocaleString()})
+                    {year.displayName}
                   </option>
                 ))}
               </select>

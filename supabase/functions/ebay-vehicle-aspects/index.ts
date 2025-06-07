@@ -171,8 +171,10 @@ async function getCompatibilityPropertyValues(
 async function getVehicleAspectsFromTaxonomy(token: string): Promise<VehicleAspects> {
   console.log('Starting Taxonomy API vehicle aspects collection...');
   
-  // Use the main auto parts category
-  const categoryId = '6001'; // Cars & Trucks category
+  // Use the auto parts category that supports compatibility
+  // Category 6001 (Cars & Trucks) doesn't support compatibility properties
+  // We need to use a parts category that does support it
+  const categoryId = '33559'; // Car & Truck Parts & Accessories - this should support compatibility
   
   try {
     // First, get the compatibility properties for this category
@@ -218,7 +220,7 @@ async function getVehicleAspectsFromTaxonomy(token: string): Promise<VehicleAspe
     // Get models for top makes to provide some initial data
     if (compatibilityProperties.some(p => p.name === 'Model') && results.makes.length > 0) {
       console.log('Getting models for top makes...');
-      const topMakes = results.makes.slice(0, 10); // Get models for first 10 makes
+      const topMakes = results.makes.slice(0, 5); // Get models for first 5 makes to avoid rate limits
       
       for (const make of topMakes) {
         try {
@@ -241,7 +243,7 @@ async function getVehicleAspectsFromTaxonomy(token: string): Promise<VehicleAspe
           console.log(`Found ${makeModels.length} models for ${make.value}`);
           
           // Small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
         } catch (error) {
           console.error(`Error getting models for ${make.value}:`, error);
           // Continue with other makes
@@ -255,6 +257,8 @@ async function getVehicleAspectsFromTaxonomy(token: string): Promise<VehicleAspe
     
   } catch (error) {
     console.error('Error in Taxonomy API:', error);
+    // If the parts category also fails, fall back to fallback data
+    console.log('Taxonomy API failed completely, using fallback data');
     throw error;
   }
 }
