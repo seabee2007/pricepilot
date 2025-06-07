@@ -216,7 +216,7 @@ export async function searchCompletedItems(
           filters,
           pageSize: Math.min(Math.max(pageSize, 1), 200),
           pageOffset: Math.max(pageOffset, 0),
-          mode: 'completed'
+          mode: 'sell'
         }),
       });
 

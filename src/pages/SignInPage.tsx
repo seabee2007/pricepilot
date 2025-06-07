@@ -40,7 +40,31 @@ const SignInPage = () => {
       await signIn(signInData);
       
       toast.success('Welcome back to PricePilot!');
-      navigate('/');
+      
+      // Check for pending search and redirect accordingly
+      let pendingSearch = sessionStorage.getItem('pendingSearch');
+      
+      // Also check for pending search after email verification
+      if (!pendingSearch) {
+        pendingSearch = sessionStorage.getItem('pendingSearchAfterVerification');
+        if (pendingSearch) {
+          sessionStorage.removeItem('pendingSearchAfterVerification');
+        }
+      }
+      
+      if (pendingSearch) {
+        try {
+          const { query, mode } = JSON.parse(pendingSearch);
+          sessionStorage.removeItem('pendingSearch'); // Clean up both just in case
+          sessionStorage.removeItem('pendingSearchAfterVerification');
+          navigate(`/results?q=${encodeURIComponent(query)}&mode=${mode}`);
+        } catch (error) {
+          console.error('Error parsing pending search:', error);
+          navigate('/');
+        }
+      } else {
+        navigate('/');
+      }
     } catch (error: any) {
       console.error('Sign in error:', error);
       toast.error(error.message || 'Failed to sign in');

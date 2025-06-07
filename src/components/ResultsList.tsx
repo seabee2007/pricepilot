@@ -57,10 +57,6 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
     }
   };
 
-  const openEbayListing = (url: string) => {
-    window.open(url, '_blank');
-  };
-
   const handleSaveSearch = () => {
     if (onSaveSearch) {
       onSaveSearch();
@@ -224,9 +220,11 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                 key={item.itemId} 
                 className="flex flex-col sm:flex-row hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-150"
               >
-                <div 
-                  className="flex items-start p-4 w-full sm:w-3/5 cursor-pointer"
-                  onClick={() => openEbayListing(item.itemWebUrl)}
+                <a 
+                  href={item.itemWebUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start p-4 w-full sm:w-3/5 cursor-pointer hover:no-underline"
                 >
                   {/* Responsive Image Container */}
                   <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-32 md:w-32 lg:h-40 lg:w-40 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
@@ -311,7 +309,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                       )}
                     </button>
                   </div>
-                </div>
+                </a>
                 
                 {/* Desktop Price Column */}
                 <div className="hidden sm:flex flex-col justify-center p-4 w-1/5">

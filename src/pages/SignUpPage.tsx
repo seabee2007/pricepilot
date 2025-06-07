@@ -47,6 +47,14 @@ const SignUpPage = () => {
       await signUp(signUpData);
       
       toast.success('Account created! Please check your email to verify your account.');
+      
+      // Keep pending search in session storage for after email verification
+      const pendingSearch = sessionStorage.getItem('pendingSearch');
+      if (pendingSearch) {
+        // Add a flag to indicate this user just signed up with a pending search
+        sessionStorage.setItem('pendingSearchAfterVerification', pendingSearch);
+      }
+      
       navigate('/signin');
     } catch (error: any) {
       console.error('Sign up error:', error);

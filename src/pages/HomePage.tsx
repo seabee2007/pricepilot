@@ -1,12 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DollarSign, ShoppingCart } from 'lucide-react';
 import SearchForm from '../components/SearchForm';
 import VehicleSearchForm from '../components/VehicleSearchForm';
 import { SearchMode } from '../types';
 
 const HomePage = () => {
+  const [searchParams] = useSearchParams();
   const [activeMode, setActiveMode] = useState<SearchMode>('buy');
   const [showVehicleSearch, setShowVehicleSearch] = useState(false);
+
+  // Check for category parameter on component mount
+  useEffect(() => {
+    const categoryParam = searchParams.get('category');
+    if (categoryParam === 'motors') {
+      setShowVehicleSearch(true);
+    }
+  }, [searchParams]);
 
   const handleCategoryChange = (category: string) => {
     setShowVehicleSearch(category === 'motors');
@@ -14,6 +24,8 @@ const HomePage = () => {
 
   const handleBackToGeneral = () => {
     setShowVehicleSearch(false);
+    // Clear the category parameter from URL when going back to general search
+    window.history.replaceState({}, '', '/');
   };
 
   return (

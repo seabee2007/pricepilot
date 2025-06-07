@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import ResultsList from '../components/ResultsList';
 import PriceHistoryChart from '../components/PriceHistoryChart';
 import SaveThresholdModal from '../components/SaveThresholdModal';
+import AuthPrompt from '../components/AuthPrompt';
 import { ItemSummary, SearchFilters, SearchMode, PriceHistory } from '../types';
 import { searchLiveItems, searchCompletedItems, calculateAveragePrice } from '../lib/ebay';
 import { savePriceHistory, saveSearch, getPriceHistory } from '../lib/supabase';
@@ -35,6 +36,7 @@ const ResultsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [lowestPrice, setLowestPrice] = useState(0);
+  const [isAuthError, setIsAuthError] = useState(false);
 
   useEffect(() => {
     console.log('🚀 useEffect triggered');
@@ -67,6 +69,7 @@ const ResultsPage = () => {
       }
       setLoading(true);
       setError(null);
+      setIsAuthError(false);
       
       try {
         let results: ItemSummary[] = [];
@@ -134,8 +137,13 @@ const ResultsPage = () => {
         }
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch data from eBay. Please try again.';
         
-        // Check if it's an API credentials error
-        if (errorMessage.includes('eBay API credentials are missing') || errorMessage.includes('authentication failed')) {
+        // Check if it's an authentication error
+        if (errorMessage.includes('Authentication required') || 
+            errorMessage.includes('Authentication failed') ||
+            errorMessage.includes('Please sign in')) {
+          setIsAuthError(true);
+          setError(errorMessage);
+        } else if (errorMessage.includes('eBay API credentials are missing') || errorMessage.includes('authentication failed')) {
           setError(`${errorMessage} Please check the setup instructions in EBAY_API_SETUP.md for configuring your eBay API credentials.`);
         } else if (errorMessage.includes('ERR_INSUFFICIENT_RESOURCES')) {
           setError('Too many requests. Please wait a moment and try again.');
@@ -147,7 +155,9 @@ const ResultsPage = () => {
           setError(errorMessage);
         }
         
-        toast.error('Error fetching results. Check console for details.');
+        if (!isAuthError) {
+          toast.error('Error fetching results. Check console for details.');
+        }
       } finally {
         setLoading(false);
         if (config.debug.showConsoleMessages) {
@@ -194,8 +204,24 @@ const ResultsPage = () => {
   };
 
   const goBack = () => {
-    navigate('/');
+    // Check if this is a vehicle/motors search and navigate accordingly
+    const isVehicleSearch = filters.category === 'motors' || 
+                           filters.vehicleAspects ||
+                           query.toLowerCase().match(/\b(car|truck|vehicle|auto|ford|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|jeep|ram|gmc|cadillac|buick|lincoln|acura|lexus|infiniti|mazda|subaru|mitsubishi|hyundai|kia|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls|jaguar|land rover|mini|fiat|alfa romeo|chrysler|tesla|mustang|camaro|corvette|challenger|charger|viper|wrangler|silverado|f-150|tacoma|tundra|accord|civic|camry|prius|altima|sentra|pathfinder|pilot|cr-v|rav4|highlander|4runner|escalade|tahoe|suburban|yukon|explorer|escape|focus|fusion|edge|bronco)\b/);
+    
+    if (isVehicleSearch) {
+      // Navigate to home page with motors category pre-selected to show VehicleSearchForm
+      navigate('/?category=motors');
+    } else {
+      // Navigate to regular home page
+      navigate('/');
+    }
   };
+
+  // Determine if this is a vehicle search for UI purposes
+  const isVehicleSearch = filters.category === 'motors' || 
+                         filters.vehicleAspects ||
+                         query.toLowerCase().match(/\b(car|truck|vehicle|auto|ford|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|jeep|ram|gmc|cadillac|buick|lincoln|acura|lexus|infiniti|mazda|subaru|mitsubishi|hyundai|kia|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls|jaguar|land rover|mini|fiat|alfa romeo|chrysler|tesla|mustang|camaro|corvette|challenger|charger|viper|wrangler|silverado|f-150|tacoma|tundra|accord|civic|camry|prius|altima|sentra|pathfinder|pilot|cr-v|rav4|highlander|4runner|escalade|tahoe|suburban|yukon|explorer|escape|focus|fusion|edge|bronco)\b/);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
@@ -225,7 +251,7 @@ const ResultsPage = () => {
           className="mb-4"
           icon={<ArrowLeft className="h-4 w-4" />}
         >
-          Back to Search
+          {isVehicleSearch ? 'Back to Vehicle Search' : 'Back to Search'}
         </Button>
         
         <h1 className={`text-2xl font-bold ${mode === 'buy' ? 'text-blue-700 dark:text-blue-500' : 'text-green-700 dark:text-green-500'}`}>
@@ -234,30 +260,39 @@ const ResultsPage = () => {
       </div>
       
       {error ? (
-        <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded mb-6">
-          <div className="flex items-start">
-            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
-            <div>
-              <h3 className="text-red-800 dark:text-red-400 font-medium mb-2">API Configuration Error</h3>
-              <p className="text-red-700 dark:text-red-400 text-sm leading-relaxed">{error}</p>
-              {error.includes('credentials') && (
-                <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-                  <p className="font-medium">To fix this issue:</p>
-                  <ol className="list-decimal list-inside mt-1 space-y-1">
-                    <li>Create a <code className="bg-red-100 dark:bg-red-900/30 px-1 rounded">.env</code> file in your project root</li>
-                    <li>Add your eBay API credentials:
-                      <pre className="bg-red-100 dark:bg-red-900/30 p-2 rounded mt-1 text-xs">
+        isAuthError ? (
+          <AuthPrompt 
+            query={query}
+            mode={mode}
+            title="Sign in to search eBay"
+            description="Create a free account or sign in to search for the best deals and price estimates on eBay."
+          />
+        ) : (
+          <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded mb-6">
+            <div className="flex items-start">
+              <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
+              <div>
+                <h3 className="text-red-800 dark:text-red-400 font-medium mb-2">API Configuration Error</h3>
+                <p className="text-red-700 dark:text-red-400 text-sm leading-relaxed">{error}</p>
+                {error.includes('credentials') && (
+                  <div className="mt-3 text-sm text-red-600 dark:text-red-400">
+                    <p className="font-medium">To fix this issue:</p>
+                    <ol className="list-decimal list-inside mt-1 space-y-1">
+                      <li>Create a <code className="bg-red-100 dark:bg-red-900/30 px-1 rounded">.env</code> file in your project root</li>
+                      <li>Add your eBay API credentials:
+                        <pre className="bg-red-100 dark:bg-red-900/30 p-2 rounded mt-1 text-xs">
 {`VITE_EBAY_CLIENT_ID=your_ebay_client_id_here
 VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
-                      </pre>
-                    </li>
-                    <li>Restart your development server</li>
-                  </ol>
-                </div>
-              )}
+                        </pre>
+                      </li>
+                      <li>Restart your development server</li>
+                    </ol>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )
       ) : (
         <>
           <ResultsList 

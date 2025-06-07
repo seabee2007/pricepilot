@@ -580,7 +580,9 @@ Deno.serve(async (req) => {
       ? 'https://api.sandbox.ebay.com/buy/browse/v1/item_summary'
       : 'https://api.ebay.com/buy/browse/v1/item_summary';
       
-    const baseUrl = mode === 'completed' 
+    // Map both 'sell' and 'completed' modes to the /completed endpoint
+    const completedModes = new Set(['sell', 'completed']);
+    const baseUrl = completedModes.has(mode)
       ? `${baseApiUrl}/completed`
       : `${baseApiUrl}/search`;
     
@@ -591,7 +593,7 @@ Deno.serve(async (req) => {
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
-    searchUrl.searchParams.append('sort', mode === 'completed' ? 'price_desc' : 'price');
+    searchUrl.searchParams.append('sort', completedModes.has(mode) ? 'price_desc' : 'price');
     
     // Add category filter if specified and not "all" - ALWAYS add for motors
     if (category === 'motors' || (category && category !== 'all')) {
