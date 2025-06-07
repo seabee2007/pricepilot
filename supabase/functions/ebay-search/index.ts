@@ -13,6 +13,15 @@ let tokenCache: {
 } | null = null;
 
 async function getOAuthToken(): Promise<string> {
+  // Use the working OAuth application token first
+  const oauthToken = Deno.env.get('EBAY_OAUTH_TOKEN');
+  
+  if (oauthToken) {
+    console.log('Using OAuth application token');
+    return oauthToken;
+  }
+
+  // Fallback to client credentials flow
   // If token exists and is still valid, return it
   if (tokenCache && tokenCache.expires_at > Date.now()) {
     return tokenCache.access_token;
@@ -22,7 +31,7 @@ async function getOAuthToken(): Promise<string> {
   const clientSecret = Deno.env.get('EBAY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    throw new Error('Missing eBay API credentials');
+    throw new Error('Missing eBay API credentials (EBAY_OAUTH_TOKEN or EBAY_CLIENT_ID/EBAY_CLIENT_SECRET)');
   }
 
   const credentials = btoa(`${clientId}:${clientSecret}`);
