@@ -113,7 +113,7 @@ async function testBasicEbayConnection(token: string): Promise<any> {
   }
 }
 
-async function searchVehiclesWithAspects(token: string, query: string = 'car truck vehicle'): Promise<any> {
+async function searchVehiclesWithAspects(token: string, query: string = 'car'): Promise<any> {
   const clientId = Deno.env.get('EBAY_CLIENT_ID');
   const isProduction = !clientId?.includes('SBX');
   
@@ -124,17 +124,11 @@ async function searchVehiclesWithAspects(token: string, query: string = 'car tru
   console.log(`🔍 Searching vehicles with query: "${query}" on ${isProduction ? 'PRODUCTION' : 'SANDBOX'} Browse API`);
 
   const url = new URL(baseUrl);
+  url.searchParams.append('q', query); // Simple query first
   url.searchParams.append('category_ids', '6001'); // Cars & Trucks category
-  url.searchParams.append('q', query);
-  url.searchParams.append('fieldgroups', 'ASPECT_REFINEMENTS'); // This is KEY for getting aspect data
-  url.searchParams.append('limit', '50'); // Reduced limit to avoid timeouts
+  url.searchParams.append('fieldgroups', 'ASPECT_REFINEMENTS'); // Get aspect refinements
   
-  // Simplified filters - remove potentially problematic ones
-  const filters = [
-    'buyingOptions:{FIXED_PRICE}', // Only fixed price for now
-    'itemLocationCountry:US' // US vehicles only
-  ];
-  url.searchParams.append('filter', filters.join(','));
+  // No additional filters - keep it simple per eBay docs
 
   console.log('🌐 Browse API Request URL:', url.toString());
 
@@ -386,9 +380,22 @@ async function buildRealVehicleInventoryData(token: string): Promise<any> {
     console.log('✅ Basic connection test passed!');
     
     // Step 1: Get general vehicle aspects with broad search
-    console.log('\n📋 Step 1: Getting general vehicle aspects...');
-    const generalData = await searchVehiclesWithAspects(token, 'car truck vehicle automobile');
-    const { makes: allMakes, years: allYears } = extractAspectsFromBrowseResponse(generalData);
+    console.log('\n📋 Step 1: Getting vehicle aspects with simple car search...');
+    const carData = await searchVehiclesWithAspects(token, 'car');
+    console.log('✅ Car search completed');
+    
+    // Step 2: Also search for trucks to get more comprehensive data
+    console.log('\n🚛 Step 2: Getting vehicle aspects with truck search...');  
+    const truckData = await searchVehiclesWithAspects(token, 'truck');
+    console.log('✅ Truck search completed');
+    
+    // Combine and extract aspects from both searches
+    const { makes: carMakes, years: carYears } = extractAspectsFromBrowseResponse(carData);
+    const { makes: truckMakes, years: truckYears } = extractAspectsFromBrowseResponse(truckData);
+    
+    // Merge results
+    const allMakes = [...carMakes, ...truckMakes];
+    const allYears = [...carYears, ...truckYears];
     
     console.log(`✅ Step 1 complete: Found ${allMakes.length} makes, ${allYears.length} years with REAL counts`);
     
@@ -405,7 +412,7 @@ async function buildRealVehicleInventoryData(token: string): Promise<any> {
     for (const make of topMakes) {
       try {
         console.log(`\n🏭 Fetching models for ${make}...`);
-        const makeData = await searchVehiclesWithAspects(token, `${make} car truck vehicle`);
+        const makeData = await searchVehiclesWithAspects(token, `${make} car`);
         
         if (makeData) {
           const { models } = extractAspectsFromBrowseResponse(makeData, make);
