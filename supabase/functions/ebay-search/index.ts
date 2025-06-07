@@ -563,7 +563,13 @@ Deno.serve(async (req) => {
       }
     }
     
+    // 1. Log the raw vehicleData just before building the filter
+    console.log('🔍 [DEBUG] vehicleData coming in:', vehicleData);
+    
     const vehicleFilter = buildVehicleFilter(vehicleData, conditionIds);
+    
+    // 2. Log the output of buildVehicleFilter immediately
+    console.log('🔍 [DEBUG] vehicleFilter string:', vehicleFilter);
     
     // TEMPORARY DEBUG: Let's trace exactly what's happening
     console.log('🔍 [URGENT DEBUG] Vehicle filter generation:');
@@ -616,19 +622,15 @@ Deno.serve(async (req) => {
     }
 
     // 2) Vehicle aspects (Make/Model/Year) go in "aspect_filter" parameter
-    console.log('🔍 [URGENT DEBUG] URL construction:');
-    console.log('  - vehicleFilter value:', `"${vehicleFilter}"`);
-    console.log('  - vehicleFilter truthy?', !!vehicleFilter);
-    console.log('  - vehicleFilter length:', vehicleFilter?.length);
-    
+    // 3. Confirm the aspect-filter branch fires
     if (vehicleFilter) {
-      // Always prefix with the categoryId for vehicle aspects
+      console.log('✔️ vehicleFilter is non-empty, will apply aspect_filter');
       const aspectFilter = `categoryId:6001,${vehicleFilter}`;
+      console.log('🔗 aspect_filter to append:', aspectFilter);
       searchUrl.searchParams.append('aspect_filter', aspectFilter);
-      console.log(`Applied aspect_filter: ${aspectFilter}`);
       console.log('🔍 [URGENT DEBUG] Successfully added aspect_filter to URL!');
     } else {
-      console.log('🔍 [URGENT DEBUG] vehicleFilter is empty - NO aspect_filter added!');
+      console.warn('⚠️ vehicleFilter was empty—no aspect_filter applied!');
     }
     
     if (compatibilityFilter) {
