@@ -425,3 +425,36 @@ export async function getUserOrders() {
 
   return data || [];
 }
+
+// Test function to manually trigger price alerts
+export async function triggerPriceAlertsManually(): Promise<{ success: boolean; message: string }> {
+  try {
+    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-price-alerts`;
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.access_token) {
+      throw new Error('Authentication required to trigger price alerts');
+    }
+
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error triggering price alerts:', error);
+    throw error;
+  }
+}

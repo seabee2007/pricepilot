@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { SavedSearch } from '../types';
-import { getSavedSearches, deleteSavedSearch } from '../lib/supabase';
+import { getSavedSearches, deleteSavedSearch, triggerPriceAlertsManually } from '../lib/supabase';
 import SavedSearchItem from '../components/SavedSearchItem';
-import { PlusCircle, Search } from 'lucide-react';
+import { PlusCircle, Search, Bell, TestTube2 } from 'lucide-react';
 import Button from '../components/ui/Button';
+import toast from 'react-hot-toast';
 
 const SavedSearchesPage = () => {
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [testingAlerts, setTestingAlerts] = useState(false);
 
   useEffect(() => {
     const fetchSavedSearches = async () => {
@@ -38,6 +40,28 @@ const SavedSearchesPage = () => {
     }
   };
 
+  const handleTestPriceAlerts = async () => {
+    if (savedSearches.length === 0) {
+      toast.error('No saved searches to test. Please save a search first.');
+      return;
+    }
+
+    setTestingAlerts(true);
+    try {
+      const result = await triggerPriceAlertsManually();
+      if (result.success) {
+        toast.success('Price alerts check completed! Check your email if any alerts were triggered.');
+      } else {
+        toast.error('Failed to trigger price alerts: ' + result.message);
+      }
+    } catch (err) {
+      console.error('Error testing price alerts:', err);
+      toast.error('Failed to test price alerts. Please try again.');
+    } finally {
+      setTestingAlerts(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
@@ -53,19 +77,48 @@ const SavedSearchesPage = () => {
     <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Saved Searches</h1>
-        <Link to="/">
-          <Button
-            variant="outline"
-            icon={<PlusCircle className="h-4 w-4" />}
-          >
-            New Search
-          </Button>
-        </Link>
+        <div className="flex gap-3">
+          {savedSearches.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={handleTestPriceAlerts}
+              disabled={testingAlerts}
+              icon={<TestTube2 className="h-4 w-4" />}
+            >
+              {testingAlerts ? 'Testing...' : 'Test Price Alerts'}
+            </Button>
+          )}
+          <Link to="/">
+            <Button
+              variant="outline"
+              icon={<PlusCircle className="h-4 w-4" />}
+            >
+              New Search
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded mb-6">
           <p className="text-red-700 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      {savedSearches.length > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+          <div className="flex items-start">
+            <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
+            <div>
+              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
+                Price Alerts Active
+              </h3>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                We'll monitor eBay prices and email you when items drop below your threshold.
+                Use the "Test Price Alerts" button to manually check all your saved searches.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
