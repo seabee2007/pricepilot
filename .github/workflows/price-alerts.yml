@@ -1,0 +1,43 @@
+name: Automated Price Alerts
+
+on:
+  schedule:
+    # Run every 2 hours
+    - cron: '0 */2 * * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  trigger-price-alerts:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Trigger Price Alerts Function
+      run: |
+        response=$(curl -s -w "\n%{http_code}" \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          -d '{}' \
+          "${{ secrets.SUPABASE_URL }}/functions/v1/check-price-alerts")
+        
+        http_code=$(echo "$response" | tail -n1)
+        response_body=$(echo "$response" | sed '$d')
+        
+        echo "HTTP Status: $http_code"
+        echo "Response: $response_body"
+        
+        if [ "$http_code" -eq 200 ]; then
+          echo "✅ Price alerts triggered successfully"
+        else
+          echo "❌ Price alerts failed with status $http_code"
+          exit 1
+        fi
+
+    - name: Log Execution
+      if: always()
+      run: |
+        echo "Price alerts check completed at $(date)"
+        echo "This workflow runs every 2 hours to check for price drops" 
