@@ -126,32 +126,40 @@ const searchLiveItems = async (query: string, filters: SavedSearch["filters"]): 
 // Email helper function using Resend
 const sendPriceAlert = async (userId: string, query: string, newPrice: number, threshold: number) => {
   try {
+    console.log(`📧 Starting sendPriceAlert for user: ${userId}, query: ${query}`);
+    
     // Get user's profile information using admin API
     const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
     
     if (userError || !userData.user) {
-      console.error("Error fetching user:", userError);
-      return;
+      console.error("❌ Error fetching user:", userError);
+      throw new Error(`Failed to fetch user data: ${userError?.message || 'User not found'}`);
     }
     
     const userEmail = userData.user.email;
     const userName = userData.user.user_metadata?.full_name || userData.user.email?.split('@')[0] || 'there';
     
+    console.log(`📧 User email: ${userEmail}, userName: ${userName}`);
+    
     if (!userEmail) {
-      console.error("No email found for user:", userId);
-      return;
+      console.error("❌ No email found for user:", userId);
+      throw new Error(`No email address found for user ${userId}`);
     }
 
     // Check if we have Resend API key
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    console.log(`🔑 Resend API key present: ${!!resendApiKey}`);
     if (!resendApiKey) {
-      console.error("Missing RESEND_API_KEY environment variable");
-      return;
+      const error = "Missing RESEND_API_KEY environment variable";
+      console.error("❌", error);
+      throw new Error(error);
     }
 
     // Format price drop percentage
     const priceDropPercent = threshold > 0 ? Math.round(((threshold - newPrice) / threshold) * 100) : 0;
     const savings = threshold - newPrice;
+
+    console.log(`💰 Price details - New: $${newPrice}, Threshold: $${threshold}, Savings: $${savings.toFixed(2)}`);
 
     // Create HTML email content
     const emailHtml = `
@@ -222,6 +230,18 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
       </html>
     `;
 
+    console.log(`📬 Preparing to send email via Resend API...`);
+
+    // Prepare email payload
+    const emailPayload = {
+      from: "PricePilot Alerts <alerts@pricepilot.app>",
+      to: [userEmail],
+      subject: `🎉 Price Alert: ${query} dropped to $${newPrice.toFixed(2)}!`,
+      html: emailHtml,
+    };
+
+    console.log(`📬 Email payload prepared for ${userEmail}`);
+
     // Send email using Resend API
     const emailResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -229,26 +249,39 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
         "Authorization": `Bearer ${resendApiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: "PricePilot Alerts <alerts@pricepilot.app>",
-        to: [userEmail],
-        subject: `🎉 Price Alert: ${query} dropped to $${newPrice.toFixed(2)}!`,
-        html: emailHtml,
-      }),
+      body: JSON.stringify(emailPayload),
     });
 
+    console.log(`📬 Resend API response status: ${emailResponse.status} ${emailResponse.statusText}`);
+
     if (!emailResponse.ok) {
-      const error = await emailResponse.text();
-      console.error("Resend API error:", error);
-      throw new Error(`Failed to send email: ${emailResponse.status}`);
+      let errorDetails = `HTTP ${emailResponse.status}: ${emailResponse.statusText}`;
+      
+      try {
+        const errorText = await emailResponse.text();
+        console.error("❌ Resend API error response:", errorText);
+        errorDetails += ` - ${errorText}`;
+      } catch (parseError) {
+        console.error("❌ Could not parse Resend error response");
+      }
+      
+      throw new Error(`Resend API failed: ${errorDetails}`);
     }
 
     const emailData = await emailResponse.json();
-    console.log(`✅ Price alert email sent successfully to ${userEmail} (Message ID: ${emailData.id})`);
+    console.log(`✅ Email sent successfully - Message ID: ${emailData.id}`);
     console.log(`📧 Alert: ${query} dropped to $${newPrice} (below threshold of $${threshold})`);
     
   } catch (error) {
-    console.error("Error sending price alert email:", error);
+    console.error("❌ Error in sendPriceAlert function:", error);
+    console.error("❌ Error details:", {
+      message: error.message,
+      stack: error.stack,
+      userId,
+      query,
+      newPrice,
+      threshold
+    });
     throw error;
   }
 };
@@ -440,14 +473,25 @@ Deno.serve(async (req) => {
         const { data: { user }, error: userError } = await userSupabase.auth.getUser();
         
         if (userError || !user) {
-          console.error("Failed to get user:", userError);
+          console.error("❌ Failed to get user:", userError);
           throw new Error("Invalid auth token or user not found");
         }
         
-        console.log(`📧 Sending test email to user: ${user.email} (${user.id})`);
+        console.log(`📧 Authenticated user: ${user.email} (${user.id})`);
+        
+        // Check environment variables before sending
+        const resendKey = Deno.env.get("RESEND_API_KEY");
+        console.log(`🔑 Environment check - RESEND_API_KEY present: ${!!resendKey}`);
+        if (!resendKey) {
+          throw new Error("RESEND_API_KEY environment variable is not set");
+        }
+        
+        console.log(`📧 Attempting to send test email to user: ${user.email}`);
         
         // Force send a test email
         await sendPriceAlert(user.id, "iPhone 13 (Test Alert)", 599.99, 699.99);
+        
+        console.log(`✅ Test email completed successfully for ${user.email}`);
         
         return new Response(
           JSON.stringify({ 
@@ -465,11 +509,17 @@ Deno.serve(async (req) => {
         );
         
       } catch (emailError) {
-        console.error("❌ Error sending test email:", emailError);
+        console.error("❌ Error in test email handler:", emailError);
+        console.error("❌ Full error details:", {
+          message: emailError.message,
+          stack: emailError.stack,
+          name: emailError.name
+        });
+        
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: `Failed to send test email: ${emailError.message}`,
+            error: `Test email failed: ${emailError.message}`,
             timestamp: new Date().toISOString()
           }),
           {
