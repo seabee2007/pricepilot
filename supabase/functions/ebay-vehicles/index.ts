@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -15,6 +16,7 @@ let tokenCache: {
 async function getOAuthToken(): Promise<string> {
   // Check for cached valid token
   if (tokenCache && tokenCache.expires_at > Date.now()) {
+    console.log('Using cached OAuth token');
     return tokenCache.access_token;
   }
 
@@ -22,7 +24,8 @@ async function getOAuthToken(): Promise<string> {
   const clientSecret = Deno.env.get('EBAY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    throw new Error('Missing eBay API credentials - EBAY_CLIENT_ID and EBAY_CLIENT_SECRET required');
+    console.error('Missing eBay credentials');
+    throw new Error('eBay API credentials not configured');
   }
 
   const credentials = btoa(`${clientId}:${clientSecret}`);
@@ -136,7 +139,7 @@ async function getMakeSpecificModels(token: string, make: string): Promise<any> 
   url.searchParams.append('category_ids', '6001');
   url.searchParams.append('q', `${make} car truck vehicle`);
   url.searchParams.append('fieldgroups', 'ASPECT_REFINEMENTS');
-  url.searchParams.append('limit', '200');
+  url.searchParams.append('limit', '100');
   
   // Use aspect filter to focus on specific make
   url.searchParams.append('aspect_filter', `Make:${make}`);
@@ -148,7 +151,7 @@ async function getMakeSpecificModels(token: string, make: string): Promise<any> 
   ];
   url.searchParams.append('filter', filters.join(','));
 
-  console.log(`Fetching models for ${make}:`, url.toString());
+  console.log(`Fetching models for ${make}`);
 
   try {
     const response = await fetch(url.toString(), {
@@ -164,15 +167,11 @@ async function getMakeSpecificModels(token: string, make: string): Promise<any> 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Browse API Error for ${make}:`, errorText);
-      throw new Error(`Browse API error for ${make}: ${response.status} - ${errorText}`);
+      return null; // Return null instead of throwing
     }
 
     const data = await response.json();
-    console.log(`${make} Response Summary:`, {
-      total: data.total || 0,
-      itemCount: data.itemSummaries?.length || 0,
-      aspectDistributions: data.refinement?.aspectDistributions?.length || 0
-    });
+    console.log(`${make} models found: ${data.refinement?.aspectDistributions?.length || 0} aspects`);
 
     return data;
   } catch (error) {
@@ -198,8 +197,6 @@ function extractAspectsFromResponse(data: any): { makes: any[], models: any[], y
     const aspectName = aspect.localizedAspectName?.toLowerCase();
     const values = aspect.aspectValueDistributions || [];
     
-    console.log(`Processing aspect: ${aspectName} with ${values.length} values`);
-
     if (aspectName === 'make' || aspectName === 'brand') {
       values.forEach((value: any) => {
         const count = value.matchCount || 0;
@@ -243,81 +240,86 @@ function extractAspectsFromResponse(data: any): { makes: any[], models: any[], y
 async function buildComprehensiveVehicleData(token: string): Promise<any> {
   console.log('Building comprehensive vehicle data from eBay Browse API...');
   
-  // Step 1: Get general vehicle aspects
-  const generalData = await getVehicleAspects(token);
-  const { makes: allMakes, years: allYears } = extractAspectsFromResponse(generalData);
-  
-  console.log(`Step 1 complete: Found ${allMakes.length} makes, ${allYears.length} years`);
-  
-  // Step 2: Get make-specific models for top makes
-  const topMakes = allMakes
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 15) // Top 15 makes for detailed model data
-    .map(make => make.value);
-  
-  console.log('Step 2: Getting models for top makes:', topMakes);
-  
-  const allModels: any[] = [];
-  
-  for (const make of topMakes) {
-    try {
-      const makeData = await getMakeSpecificModels(token, make);
-      if (makeData) {
-        const { models } = extractAspectsFromResponse(makeData);
+  try {
+    // Step 1: Get general vehicle aspects
+    const generalData = await getVehicleAspects(token);
+    const { makes: allMakes, years: allYears } = extractAspectsFromResponse(generalData);
+    
+    console.log(`Step 1 complete: Found ${allMakes.length} makes, ${allYears.length} years`);
+    
+    // Step 2: Get make-specific models for top makes
+    const topMakes = allMakes
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10) // Reduced to 10 makes to avoid timeout
+      .map(make => make.value);
+    
+    console.log('Step 2: Getting models for top makes:', topMakes);
+    
+    const allModels: any[] = [];
+    
+    for (const make of topMakes) {
+      try {
+        const makeData = await getMakeSpecificModels(token, make);
+        if (makeData) {
+          const { models } = extractAspectsFromResponse(makeData);
+          
+          // Associate models with their make
+          models.forEach(model => {
+            model.make = make;
+            allModels.push(model);
+          });
+          
+          console.log(`Found ${models.length} models for ${make}`);
+        }
         
-        // Associate models with their make
-        models.forEach(model => {
-          model.make = make;
-          allModels.push(model);
-        });
+        // Rate limiting delay
+        await new Promise(resolve => setTimeout(resolve, 100));
         
-        console.log(`Found ${models.length} models for ${make}`);
+      } catch (error) {
+        console.error(`Failed to get models for ${make}:`, error);
+        // Continue with other makes
       }
-      
-      // Rate limiting delay
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-    } catch (error) {
-      console.error(`Failed to get models for ${make}:`, error);
-      // Continue with other makes
     }
-  }
-  
-  // Step 3: Sort and deduplicate
-  const uniqueMakes = Array.from(
-    new Map(allMakes.map(make => [make.value, make])).values()
-  ).sort((a, b) => b.count - a.count);
-  
-  const uniqueModels = Array.from(
-    new Map(allModels.map(model => [`${model.value}-${model.make}`, model])).values()
-  ).sort((a, b) => b.count - a.count);
-  
-  const uniqueYears = Array.from(
-    new Map(allYears.map(year => [year.value, year])).values()
-  ).sort((a, b) => {
-    const yearA = parseInt(a.value);
-    const yearB = parseInt(b.value);
-    if (!isNaN(yearA) && !isNaN(yearB)) {
-      return yearB - yearA; // Newest first
+    
+    // Step 3: Sort and deduplicate
+    const uniqueMakes = Array.from(
+      new Map(allMakes.map(make => [make.value, make])).values()
+    ).sort((a, b) => b.count - a.count);
+    
+    const uniqueModels = Array.from(
+      new Map(allModels.map(model => [`${model.value}-${model.make}`, model])).values()
+    ).sort((a, b) => b.count - a.count);
+    
+    const uniqueYears = Array.from(
+      new Map(allYears.map(year => [year.value, year])).values()
+    ).sort((a, b) => {
+      const yearA = parseInt(a.value);
+      const yearB = parseInt(b.value);
+      if (!isNaN(yearA) && !isNaN(yearB)) {
+        return yearB - yearA; // Newest first
+      }
+      return b.count - a.count;
+    });
+    
+    console.log(`Final data: ${uniqueMakes.length} makes, ${uniqueModels.length} models, ${uniqueYears.length} years`);
+    
+    // Log sample data for verification
+    if (uniqueMakes.length > 0) {
+      console.log('Sample makes:', uniqueMakes.slice(0, 5).map(m => `${m.displayName} (${m.count})`));
     }
-    return b.count - a.count;
-  });
-  
-  console.log(`Final data: ${uniqueMakes.length} makes, ${uniqueModels.length} models, ${uniqueYears.length} years`);
-  
-  // Log sample data for verification
-  if (uniqueMakes.length > 0) {
-    console.log('Sample makes:', uniqueMakes.slice(0, 5).map(m => `${m.displayName} (${m.count})`));
+    if (uniqueModels.length > 0) {
+      console.log('Sample models:', uniqueModels.slice(0, 10).map(m => `${m.displayName} - ${m.make} (${m.count})`));
+    }
+    
+    return {
+      makes: uniqueMakes.slice(0, 30),
+      models: uniqueModels.slice(0, 200),
+      years: uniqueYears.slice(0, 35)
+    };
+  } catch (error) {
+    console.error('Error in buildComprehensiveVehicleData:', error);
+    throw error;
   }
-  if (uniqueModels.length > 0) {
-    console.log('Sample models:', uniqueModels.slice(0, 10).map(m => `${m.displayName} - ${m.make} (${m.count})`));
-  }
-  
-  return {
-    makes: uniqueMakes.slice(0, 50),
-    models: uniqueModels.slice(0, 500),
-    years: uniqueYears.slice(0, 50)
-  };
 }
 
 function getFallbackVehicleData(): any {
@@ -357,23 +359,53 @@ function getFallbackVehicleData(): any {
       { value: 'Corolla', displayName: 'Corolla', count: 1800, make: 'Toyota' },
       { value: 'Altima', displayName: 'Altima', count: 1650, make: 'Nissan' },
       { value: 'Camaro', displayName: 'Camaro', count: 1600, make: 'Chevrolet' },
-      { value: 'CR-V', displayName: 'CR-V', count: 1580, make: 'Honda' }
+      { value: 'CR-V', displayName: 'CR-V', count: 1580, make: 'Honda' },
+      { value: 'Explorer', displayName: 'Explorer', count: 1650, make: 'Ford' },
+      { value: 'Escape', displayName: 'Escape', count: 1580, make: 'Ford' },
+      { value: 'Focus', displayName: 'Focus', count: 1520, make: 'Ford' },
+      { value: 'Equinox', displayName: 'Equinox', count: 1550, make: 'Chevrolet' },
+      { value: 'Malibu', displayName: 'Malibu', count: 1480, make: 'Chevrolet' },
+      { value: 'RAV4', displayName: 'RAV4', count: 1950, make: 'Toyota' },
+      { value: 'Prius', displayName: 'Prius', count: 1680, make: 'Toyota' },
+      { value: 'Highlander', displayName: 'Highlander', count: 1580, make: 'Toyota' },
+      { value: 'Pilot', displayName: 'Pilot', count: 1520, make: 'Honda' },
+      { value: 'Odyssey', displayName: 'Odyssey', count: 1420, make: 'Honda' },
+      { value: 'Sentra', displayName: 'Sentra', count: 1420, make: 'Nissan' },
+      { value: 'Rogue', displayName: 'Rogue', count: 1580, make: 'Nissan' },
+      { value: 'Pathfinder', displayName: 'Pathfinder', count: 1380, make: 'Nissan' },
+      { value: '3 Series', displayName: '3 Series', count: 580, make: 'BMW' },
+      { value: 'X3', displayName: 'X3', count: 450, make: 'BMW' },
+      { value: 'C-Class', displayName: 'C-Class', count: 520, make: 'Mercedes-Benz' },
+      { value: 'E-Class', displayName: 'E-Class', count: 420, make: 'Mercedes-Benz' },
+      { value: 'A4', displayName: 'A4', count: 380, make: 'Audi' },
+      { value: 'Q5', displayName: 'Q5', count: 320, make: 'Audi' },
+      { value: 'Challenger', displayName: 'Challenger', count: 700, make: 'Dodge' },
+      { value: 'Charger', displayName: 'Charger', count: 480, make: 'Dodge' },
+      { value: 'Wrangler', displayName: 'Wrangler', count: 550, make: 'Jeep' },
+      { value: 'Grand Cherokee', displayName: 'Grand Cherokee', count: 480, make: 'Jeep' }
     ],
     years
   };
 }
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight requests FIRST
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { 
+      status: 200,
+      headers: corsHeaders 
+    });
   }
 
   try {
+    console.log(`Received ${req.method} request to ebay-vehicles function`);
+
     // Initialize Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error('Missing Supabase credentials');
       throw new Error('Missing Supabase credentials');
     }
 
@@ -382,6 +414,7 @@ Deno.serve(async (req) => {
     // Verify authentication
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.error('Missing authorization header');
       throw new Error('Missing authorization header');
     }
 
@@ -390,16 +423,18 @@ Deno.serve(async (req) => {
     );
 
     if (authError || !user) {
+      console.error('Authentication failed:', authError);
       throw new Error('Unauthorized');
     }
 
     console.log('User authenticated:', user.id);
 
     // Get OAuth token and fetch vehicle data
-    const token = await getOAuthToken();
-    
     let vehicleData;
     try {
+      console.log('Getting OAuth token...');
+      const token = await getOAuthToken();
+      console.log('Building vehicle data...');
       vehicleData = await buildComprehensiveVehicleData(token);
       console.log('Successfully built comprehensive vehicle data from eBay Browse API');
     } catch (error) {
@@ -418,6 +453,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify(vehicleData),
       { 
+        status: 200,
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 
@@ -434,6 +470,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify(fallbackData),
       { 
+        status: 200,
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 
