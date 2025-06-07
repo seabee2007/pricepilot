@@ -44,7 +44,7 @@ async function getApplicationToken(): Promise<string> {
       },
       body: new URLSearchParams({
         grant_type: 'client_credentials',
-        scope: 'https://api.ebay.com/oauth/api_scope/buy.browse'
+        scope: 'https://api.ebay.com/oauth/api_scope'
       })
     });
 
