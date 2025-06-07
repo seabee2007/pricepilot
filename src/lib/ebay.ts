@@ -474,6 +474,31 @@ export function validateVehicleCompatibility(compatibility: VehicleCompatibility
 }
 
 /**
+ * Build vehicle filter string with properly capitalized aspect names
+ * This now matches the backend format: Make:{Dodge},Model:{Viper},Year:{1996}
+ */
+function buildVehicleFilter(vehicleAspects: any): string {
+  if (!vehicleAspects) return '';
+  
+  const filterParts: string[] = [];
+  
+  // Vehicle aspects must be capitalized exactly as eBay expects
+  if (vehicleAspects.make) {
+    filterParts.push(`Make:{${vehicleAspects.make}}`);
+  }
+  
+  if (vehicleAspects.model) {
+    filterParts.push(`Model:{${vehicleAspects.model}}`);
+  }
+  
+  if (vehicleAspects.year) {
+    filterParts.push(`Year:{${vehicleAspects.year}}`);
+  }
+  
+  return filterParts.join(',');
+}
+
+/**
  * Get automotive categories commonly used for parts and accessories
  */
 export function getAutomotiveCategories(): { id: string; name: string }[] {

@@ -233,33 +233,19 @@ function buildVehicleFilter(vehicleAspects: any, conditionIds: number[] = []): s
   
   const filterParts: string[] = [];
   
-  // Add condition distributions in correct filter format
-  if (conditionIds && conditionIds.length > 0) {
-    const conditionNames = conditionIds.map(id => {
-      switch(id) {
-        case 1000: return 'NEW';
-        case 2000: return 'CERTIFIED_REFURBISHED';
-        case 3000: return 'USED';
-        case 4000: return 'VERY_GOOD';
-        case 5000: return 'GOOD';
-        case 6000: return 'ACCEPTABLE';
-        default: return 'USED';
-      }
-    });
-    filterParts.push(`conditionIds:{${conditionNames.join(',')}}`);
-  }
-  
-  // Build vehicle filters using CORRECT Browse API format: make:{Toyota},model:{Camry}
+  // Vehicle aspects must be capitalized exactly as eBay expects:
+  // Make:{Dodge}, Model:{Viper}, Year:{1996}
   if (vehicleAspects.make) {
-    filterParts.push(`make:{${vehicleAspects.make}}`);
+    filterParts.push(`Make:{${vehicleAspects.make}}`);
   }
   
   if (vehicleAspects.model) {
-    filterParts.push(`model:{${vehicleAspects.model}}`);
+    filterParts.push(`Model:{${vehicleAspects.model}}`);
   }
   
+  // eBay returns this aspect as "Model Year", but you can filter by "Year"
   if (vehicleAspects.year) {
-    filterParts.push(`year:{${vehicleAspects.year}}`);
+    filterParts.push(`Year:{${vehicleAspects.year}}`);
   } else if (vehicleAspects.yearFrom || vehicleAspects.yearTo) {
     // Handle year range - create multiple year values
     if (vehicleAspects.yearFrom && vehicleAspects.yearTo) {
@@ -270,12 +256,12 @@ function buildVehicleFilter(vehicleAspects: any, conditionIds: number[] = []): s
         years.push(year.toString());
       }
       if (years.length > 0) {
-        filterParts.push(`year:{${years.join(',')}}`);
+        filterParts.push(`Year:{${years.join(',')}}`);
       }
     } else if (vehicleAspects.yearFrom) {
-      filterParts.push(`year:{${vehicleAspects.yearFrom}}`);
+      filterParts.push(`Year:{${vehicleAspects.yearFrom}}`);
     } else if (vehicleAspects.yearTo) {
-      filterParts.push(`year:{${vehicleAspects.yearTo}}`);
+      filterParts.push(`Year:{${vehicleAspects.yearTo}}`);
     }
   }
   
@@ -296,7 +282,7 @@ function buildVehicleFilter(vehicleAspects: any, conditionIds: number[] = []): s
     filterParts.push(`transmission:{${vehicleAspects.transmission}}`);
   }
   
-  // Use COMMA separators for Browse API filter parameter (correct format)
+  // Use COMMA separators for Browse API aspect_filter parameter (correct format)
   return filterParts.join(',');
 }
 
@@ -331,7 +317,7 @@ async function checkItemCompatibility(itemId: string, compatibility: any, token:
   
   const url = `${baseApiUrl}/${itemId}/check_compatibility`;
   
-  const compatibilityProperties = [];
+  const compatibilityProperties: Array<{ name: string; value: any }> = [];
   if (compatibility.year) compatibilityProperties.push({ name: 'Year', value: compatibility.year });
   if (compatibility.make) compatibilityProperties.push({ name: 'Make', value: compatibility.make });
   if (compatibility.model) compatibilityProperties.push({ name: 'Model', value: compatibility.model });
@@ -613,19 +599,18 @@ Deno.serve(async (req) => {
       console.log(`Applied category filter: ${category} -> ${categoryId}`);
     }
     
-    // Combine all filters into a single filter parameter
-    const allFilters: string[] = [];
+    // 1) Static filters go in "filter" parameter
     if (filterString) {
-      allFilters.push(filterString);
+      searchUrl.searchParams.append('filter', filterString);
+      console.log(`Applied filter: ${filterString}`);
     }
+
+    // 2) Vehicle aspects (Make/Model/Year) go in "aspect_filter" parameter
     if (vehicleFilter) {
-      allFilters.push(vehicleFilter);
-    }
-    
-    if (allFilters.length > 0) {
-      const combinedFilter = allFilters.join(',');
-      searchUrl.searchParams.append('filter', combinedFilter);
-      console.log(`Applied combined filter: ${combinedFilter}`);
+      // Always prefix with the categoryId for vehicle aspects
+      const aspectFilter = `categoryId:6001,${vehicleFilter}`;
+      searchUrl.searchParams.append('aspect_filter', aspectFilter);
+      console.log(`Applied aspect_filter: ${aspectFilter}`);
     }
     
     if (compatibilityFilter) {
