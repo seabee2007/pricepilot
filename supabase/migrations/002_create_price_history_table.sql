@@ -20,15 +20,21 @@ ALTER TABLE public.price_history ENABLE ROW LEVEL SECURITY;
 -- Drop existing policies first to avoid conflicts
 DROP POLICY IF EXISTS "Anyone can view price history" ON public.price_history;
 DROP POLICY IF EXISTS "Service role can manage price history" ON public.price_history;
+DROP POLICY IF EXISTS "Authenticated users can insert price history" ON public.price_history;
 
 CREATE POLICY "Anyone can view price history" ON public.price_history
   FOR SELECT USING (true);
 
--- Only service role can insert/update price history (from Edge Functions)
+-- Allow authenticated users to insert price history data
+CREATE POLICY "Authenticated users can insert price history" ON public.price_history
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+-- Service role can manage all price history (for Edge Functions and admin tasks)
 CREATE POLICY "Service role can manage price history" ON public.price_history
   FOR ALL USING (auth.role() = 'service_role');
 
 -- Grant permissions
 GRANT SELECT ON public.price_history TO authenticated;
 GRANT SELECT ON public.price_history TO anon;
+GRANT INSERT ON public.price_history TO authenticated;
 GRANT ALL ON public.price_history TO service_role; 
