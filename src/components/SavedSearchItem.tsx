@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SavedItem, SavedItemIndividual } from '../types';
-import { ExternalLink, Trash2, Package, Edit, Check, X, Bell } from 'lucide-react';
+import { ExternalLink, Trash2, Package, Edit, Check, X, Bell, TrendingUp, TrendingDown, DollarSign, Loader2 } from 'lucide-react';
 import Button from './ui/Button';
-import { updateSavedItem } from '../lib/supabase';
+import { updateSavedItem, parseVehicleFromQuery, getVehicleValue, VehicleValueResponse } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import PriceHistoryChart from './PriceHistoryChart';
 
@@ -13,9 +13,14 @@ interface SavedItemCardProps {
 }
 
 const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) => {
+  const [isUpdating, setIsUpdating] = useState(false);
   const [isEditingAlert, setIsEditingAlert] = useState(false);
   const [alertValue, setAlertValue] = useState(savedItem.price_alert_threshold?.toString() || '');
-  const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Vehicle value state
+  const [vehicleValue, setVehicleValue] = useState<VehicleValueResponse | null>(null);
+  const [loadingVehicleValue, setLoadingVehicleValue] = useState(false);
+  const [vehicleValueError, setVehicleValueError] = useState<string | null>(null);
 
   const handleDelete = () => {
     onDelete(savedItem.id);
@@ -75,6 +80,48 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
   if (!isIndividualItem(savedItem)) {
     return null; // Don't render search queries anymore
   }
+
+  // Detect if this is a vehicle item
+  const vehicleInfo = parseVehicleFromQuery(savedItem.title || '');
+  const isVehicleItem = vehicleInfo !== null;
+
+  // Fetch vehicle value when component mounts for vehicle items
+  useEffect(() => {
+    const fetchVehicleValue = async () => {
+      if (!isVehicleItem || !vehicleInfo || !vehicleInfo.make || !vehicleInfo.model || !vehicleInfo.year) return;
+      
+      setLoadingVehicleValue(true);
+      setVehicleValueError(null);
+      
+      try {
+        const value = await getVehicleValue({
+          make: vehicleInfo.make,
+          model: vehicleInfo.model,
+          year: vehicleInfo.year,
+          mileage: vehicleInfo.mileage,
+          trim: vehicleInfo.trim,
+          zipCode: vehicleInfo.zipCode
+        });
+        setVehicleValue(value);
+      } catch (error) {
+        console.error('Error fetching vehicle value:', error);
+        setVehicleValueError(error instanceof Error ? error.message : 'Failed to get vehicle value');
+      } finally {
+        setLoadingVehicleValue(false);
+      }
+    };
+
+    fetchVehicleValue();
+  }, [isVehicleItem, vehicleInfo]);
+
+  const formatCurrency = (value: number, currency: string = 'USD') => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value);
+  };
 
   return (
     <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden transition-all hover:shadow-md">
@@ -200,11 +247,89 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
         </div>
       </div>
 
-      {/* Price History Chart */}
+      {/* Market Value / Price History Section */}
       {savedItem.item_id && (
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">30-Day Price History</h4>
-          <PriceHistoryChart query={savedItem.title || ''} searchId={savedItem.id} />
+          {isVehicleItem && vehicleInfo ? (
+            <>
+              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Vehicle Market Value</h4>
+              <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4">
+                {loadingVehicleValue ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-500 mr-2" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Getting market value...</span>
+                  </div>
+                ) : vehicleValueError ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-red-600 dark:text-red-400">{vehicleValueError}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Market value data not available
+                    </p>
+                  </div>
+                ) : vehicleValue ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                          {formatCurrency(vehicleValue.value, vehicleValue.currency)}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Market Value • {vehicleValue.cached ? 'Cached' : 'Live'} Data
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <DollarSign className="w-6 h-6 text-green-500 dark:text-green-400" />
+                      </div>
+                    </div>
+                    
+                    {/* Comparison with eBay listing price */}
+                    {savedItem.price && (
+                      <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Your listing price:</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            ${savedItem.price.toFixed(2)}
+                          </span>
+                        </div>
+                        {(() => {
+                          const difference = savedItem.price - vehicleValue.value;
+                          const percentDiff = (difference / vehicleValue.value) * 100;
+                          const isGoodDeal = difference < 0; // Below market value is good
+                          
+                          return (
+                            <div className={`flex items-center gap-1 mt-1 ${isGoodDeal ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                              {isGoodDeal ? (
+                                <TrendingDown className="w-4 h-4" />
+                              ) : (
+                                <TrendingUp className="w-4 h-4" />
+                              )}
+                              <span className="text-xs font-medium">
+                                {isGoodDeal ? '' : '+'}{formatCurrency(Math.abs(difference))} 
+                                ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs market
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    
+                    <div className="text-xs text-gray-400 dark:text-gray-500">
+                      Data from RapidAPI • Updated: {new Date(vehicleValue.timestamp).toLocaleDateString()}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">No market value data available</p>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">30-Day Price History</h4>
+              <PriceHistoryChart query={savedItem.title || ''} searchId={savedItem.id} />
+            </>
+          )}
         </div>
       )}
 
