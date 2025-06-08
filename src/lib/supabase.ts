@@ -688,25 +688,38 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
     console.log('🔍 Found make:', make, 'year:', year);
 
     if (make && year) {
-      // Try to extract model (everything after make, before year, excluding common words)
       const makeIndex = query.toLowerCase().indexOf(make.toLowerCase());
       const yearIndex = query.indexOf(year.toString());
       
-      if (makeIndex < yearIndex) {
-        const modelPart = query.substring(makeIndex + make.length, yearIndex).trim();
-        // Clean up model name - preserve hyphens but remove common words
-        model = modelPart
-          .replace(/\b(for sale|used|new|car|auto|vehicle|truck)\b/gi, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        console.log('🔍 Extracted model part:', modelPart, '-> cleaned:', model);
-        
-        if (model && model.length > 0) {
-          const result = { make, model, year };
-          console.log('✅ Successfully parsed vehicle:', result);
-          return result;
-        }
+      let modelPart = '';
+      
+      // Handle both cases: year before make (1967 Ford Mustang) and make before year (Ford 2025 F-150)
+      if (yearIndex < makeIndex) {
+        // Year comes before make: "1967 Ford Mustang"
+        // Model is everything after make, limited to reasonable length
+        modelPart = query.substring(makeIndex + make.length).trim();
+      } else {
+        // Make comes before year: "Ford 2025 F-150"
+        // Model is everything after make, before year
+        modelPart = query.substring(makeIndex + make.length, yearIndex).trim();
+      }
+      
+      // Clean up model name - preserve hyphens and alphanumeric, remove common words
+      model = modelPart
+        .replace(/\b(for sale|used|new|car|auto|vehicle|truck|great|driving|convertible|crate|motor|reupholstered|extra|parts|included|see|video)\b/gi, '')
+        .replace(/[^\w\s-]/g, ' ') // Replace non-alphanumeric except hyphens and spaces
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .slice(0, 3) // Limit to first 3 words for model
+        .join(' ');
+      
+      console.log('🔍 Extracted model part:', modelPart, '-> cleaned:', model);
+      
+      if (model && model.length > 0) {
+        const result = { make, model, year };
+        console.log('✅ Successfully parsed vehicle:', result);
+        return result;
       }
     }
 

@@ -85,40 +85,31 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
   const vehicleInfo = parseVehicleFromQuery(savedItem.title || '');
   const isVehicleItem = vehicleInfo !== null;
 
-  // Debug logging
-  console.log('🚗 SavedItemCard Debug:', {
-    title: savedItem.title,
-    vehicleInfo,
-    isVehicleItem
-  });
-
-  // Temporary debug override - force vehicle detection for testing
-  const debugForceVehicle = savedItem.title?.toLowerCase().includes('ford') || 
-                           savedItem.title?.toLowerCase().includes('f-150') ||
-                           savedItem.title?.toLowerCase().includes('truck');
-                           
-  console.log('🔧 Debug force vehicle:', debugForceVehicle);
-  
-  // Use debug override for testing
-  const finalIsVehicleItem = isVehicleItem || debugForceVehicle;
-  const finalVehicleInfo = vehicleInfo || (debugForceVehicle ? { make: 'Ford', model: 'F-150', year: 2025 } : null);
+  // Debug logging for development
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🚗 SavedItemCard Debug:', {
+      title: savedItem.title,
+      vehicleInfo,
+      isVehicleItem
+    });
+  }
 
   // Fetch vehicle value when component mounts for vehicle items
   useEffect(() => {
     const fetchVehicleValue = async () => {
-      if (!finalIsVehicleItem || !finalVehicleInfo || !finalVehicleInfo.make || !finalVehicleInfo.model || !finalVehicleInfo.year) return;
+      if (!isVehicleItem || !vehicleInfo || !vehicleInfo.make || !vehicleInfo.model || !vehicleInfo.year) return;
       
       setLoadingVehicleValue(true);
       setVehicleValueError(null);
       
       try {
         const value = await getVehicleValue({
-          make: finalVehicleInfo.make,
-          model: finalVehicleInfo.model,
-          year: finalVehicleInfo.year,
-          mileage: finalVehicleInfo.mileage,
-          trim: finalVehicleInfo.trim,
-          zipCode: finalVehicleInfo.zipCode
+          make: vehicleInfo.make,
+          model: vehicleInfo.model,
+          year: vehicleInfo.year,
+          mileage: vehicleInfo.mileage,
+          trim: vehicleInfo.trim,
+          zipCode: vehicleInfo.zipCode
         });
         setVehicleValue(value);
       } catch (error) {
@@ -130,7 +121,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
     };
 
     fetchVehicleValue();
-  }, [finalIsVehicleItem, finalVehicleInfo]);
+  }, [isVehicleItem, vehicleInfo]);
 
   const formatCurrency = (value: number, currency: string = 'USD') => {
     return new Intl.NumberFormat('en-US', {
@@ -268,7 +259,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
       {/* Market Value / Price History Section */}
       {savedItem.item_id && (
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          {finalIsVehicleItem && finalVehicleInfo ? (
+          {isVehicleItem && vehicleInfo ? (
             <>
               <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Vehicle Market Value</h4>
               <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4">
