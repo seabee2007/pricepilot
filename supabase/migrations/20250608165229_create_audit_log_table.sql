@@ -25,15 +25,15 @@ CREATE TABLE IF NOT EXISTS scraping_audit_log (
     
     -- Compliance information
     user_agent TEXT NOT NULL,
-    compliance_notes TEXT DEFAULT 'Public data only, no personal info collected',
-    
-    -- Indexes for common queries
-    INDEX idx_audit_timestamp (timestamp),
-    INDEX idx_audit_action (action),
-    INDEX idx_audit_source (source),
-    INDEX idx_audit_vehicle (make, model, year),
-    INDEX idx_audit_status (status_code)
+    compliance_notes TEXT DEFAULT 'Public data only, no personal info collected'
 );
+
+-- Create indexes for common queries (PostgreSQL syntax)
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON scraping_audit_log (timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON scraping_audit_log (action);
+CREATE INDEX IF NOT EXISTS idx_audit_source ON scraping_audit_log (source);
+CREATE INDEX IF NOT EXISTS idx_audit_vehicle ON scraping_audit_log (make, model, year);
+CREATE INDEX IF NOT EXISTS idx_audit_status ON scraping_audit_log (status_code);
 
 -- Add RLS policy (Row Level Security)
 ALTER TABLE scraping_audit_log ENABLE ROW LEVEL SECURITY;

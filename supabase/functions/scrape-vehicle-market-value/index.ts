@@ -553,9 +553,10 @@ async function scrapeAutoTrader(make: string, model: string, year: number): Prom
       return cached;
     }
 
-    const searchUrl = `https://www.autotrader.com/cars-for-sale/all-cars/${make}/${model}/${year}?searchRadius=0&zip=90210`;
+    // Updated URL without zip code restriction - searches all locations nationwide
+    const searchUrl = `https://www.autotrader.com/cars-for-sale/all-cars/${make}/${model}/${year}`;
     
-    console.log(`🔍 Scraping AutoTrader: ${searchUrl}`);
+    console.log(`🔍 Scraping AutoTrader (all locations): ${searchUrl}`);
     
     const response = await fetchWithProxy(searchUrl, {}, "autotrader");
     const html = await response.text();
@@ -597,7 +598,7 @@ async function scrapeAutoTrader(make: string, model: string, year: number): Prom
       if (prices.length >= 10) break; // Stop when we have enough data
     }
     
-    console.log(`📊 AutoTrader found ${prices.length} prices for ${year} ${make} ${model}`);
+    console.log(`📊 AutoTrader found ${prices.length} prices for ${year} ${make} ${model} (nationwide)`);
     
     // Cache the result
     memoryCache.set(cacheKey, prices);
@@ -646,7 +647,7 @@ async function scrapeCars(make: string, model: string, year: number): Promise<nu
 
     const searchUrl = `https://www.cars.com/shopping/results/?stock_type=used&makes[]=${make}&models[]=${model}&year_max=${year}&year_min=${year}`;
     
-    console.log(`🔍 Scraping Cars.com: ${searchUrl}`);
+    console.log(`🔍 Scraping Cars.com (all locations): ${searchUrl}`);
     
     const response = await fetchWithProxy(searchUrl, {}, "cars_com");
     const html = await response.text();
@@ -688,7 +689,7 @@ async function scrapeCars(make: string, model: string, year: number): Promise<nu
       if (prices.length >= 10) break;
     }
     
-    console.log(`📊 Cars.com found ${prices.length} prices for ${year} ${make} ${model}`);
+    console.log(`📊 Cars.com found ${prices.length} prices for ${year} ${make} ${model} (nationwide)`);
     
     // Cache the result
     memoryCache.set(cacheKey, prices);

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { SavedItem } from '../types';
-import { getAllSavedItems, deleteSavedItem, triggerPriceAlertsManually, sendTestEmail, parseVehicleFromQuery } from '../lib/supabase';
+import { getAllSavedItems, deleteSavedItem, triggerPriceAlertsManually, parseVehicleFromQuery } from '../lib/supabase';
 import SavedItemCard from '../components/SavedSearchItem'; // Will be renamed to SavedItemCard
 import AuthPrompt from '../components/AuthPrompt';
 import { getCurrentUser } from '../lib/supabase';
-import { Package, Bell, TestTube, Loader2 } from 'lucide-react';
+import { Package, Bell, Loader2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
 import { useVehicleValueMap, extractUniqueVehicleKeys, VehicleValue } from '../lib/useVehicleValueMap';
@@ -14,7 +14,6 @@ const SavedItemsPage = () => {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [alertLoading, setAlertLoading] = useState(false);
-  const [testEmailLoading, setTestEmailLoading] = useState(false);
 
   // 🔥 NEW: Extract unique vehicle keys and fetch values once for all saved items
   const uniqueVehicleKeys = savedItems
@@ -97,23 +96,6 @@ const SavedItemsPage = () => {
     }
   };
 
-  const handleSendTestEmail = async () => {
-    try {
-      setTestEmailLoading(true);
-      const result = await sendTestEmail();
-      if (result.success) {
-        toast.success(result.message);
-      } else {
-        toast.error(result.message);
-      }
-    } catch (error) {
-      console.error('Error sending test email:', error);
-      toast.error('Failed to send test email');
-    } finally {
-      setTestEmailLoading(false);
-    }
-  };
-
   if (!user) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -155,16 +137,6 @@ const SavedItemsPage = () => {
               icon={alertLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
             >
               {alertLoading ? 'Checking...' : 'Check Price Alerts Now'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleSendTestEmail}
-              disabled={testEmailLoading}
-              className="flex items-center gap-2"
-              icon={testEmailLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
-            >
-              {testEmailLoading ? 'Sending...' : 'Send Test Email'}
             </Button>
           </div>
         )}
