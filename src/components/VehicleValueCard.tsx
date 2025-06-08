@@ -3,6 +3,7 @@ import { VehicleValueRequest, VehicleValueResponse, VehicleHistoryPoint, getVehi
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Loader2, AlertCircle } from 'lucide-react';
 import Button from './ui/Button';
 import { formatTimestamp, formatCurrency } from '../lib/utils';
+import PriceBarChart from './ui/PriceBarChart';
 
 interface VehicleValueCardProps {
   initialRequest?: Partial<VehicleValueRequest>;
@@ -208,7 +209,7 @@ const VehicleValueCard = ({ initialRequest, onValueUpdate }: VehicleValueCardPro
                 
                 {/* Display Low/Avg/High values if available from scraping */}
                 {vehicleValue.low !== undefined && vehicleValue.avg !== undefined && vehicleValue.high !== undefined ? (
-                  <div className="mt-2 space-y-2">
+                  <div className="mt-2 space-y-3">
                     <div className="text-center">
                       <p className="text-3xl font-bold text-green-600 dark:text-green-400">
                         {formatCurrency(vehicleValue.avg, vehicleValue.currency)}
@@ -216,26 +217,13 @@ const VehicleValueCard = ({ initialRequest, onValueUpdate }: VehicleValueCardPro
                       <p className="text-sm text-gray-600 dark:text-gray-400">Average Market Value</p>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                          {formatCurrency(vehicleValue.low, vehicleValue.currency)}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Low</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                          {formatCurrency(vehicleValue.avg, vehicleValue.currency)}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Avg</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-semibold text-red-600 dark:text-red-400">
-                          {formatCurrency(vehicleValue.high, vehicleValue.currency)}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">High</p>
-                      </div>
-                    </div>
+                    <PriceBarChart
+                      low={vehicleValue.low}
+                      avg={vehicleValue.avg}
+                      high={vehicleValue.high}
+                      currency={vehicleValue.currency}
+                      className="bg-transparent dark:bg-transparent p-0"
+                    />
                   </div>
                 ) : (
                   /* Fallback for single value (legacy API) */

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { ItemSummary, SearchMode } from '../types';
-import { formatCurrency, truncateText, getConditionName } from '../lib/utils';
-import { ExternalLink, Truck, Shield, Heart, HeartOff } from 'lucide-react';
+import { formatCurrency, truncateText, getConditionName, formatTimestamp } from '../lib/utils';
+import { ExternalLink, Truck, Shield, Heart, HeartOff, TrendingUp, TrendingDown, MapPin, Clock, DollarSign, Zap, Award, Star } from 'lucide-react';
 import Button from './ui/Button';
 import { saveIndividualItem, checkIfItemSaved, deleteSavedItem, getAllSavedItems, parseVehicleFromQuery } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { useVehicleValueMap, extractUniqueVehicleKeys, VehicleValue } from '../lib/useVehicleValueMap';
+import PriceBarChart from './ui/PriceBarChart';
 
 interface ResultsListProps {
   items: ItemSummary[];
@@ -220,41 +221,14 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
 
                     {/* 🚗 NEW: Vehicle Market Value Section */}
                     {vehicleValue && (
-                      <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-blue-600 dark:text-blue-400 font-medium">Market Value:</span>
-                          <div className="flex gap-3 text-xs">
-                            <span className="text-red-600 dark:text-red-400">
-                              Low: {formatCurrency(vehicleValue.low || 0, vehicleValue.currency || 'USD')}
-                            </span>
-                            <span className="text-blue-600 dark:text-blue-400 font-semibold">
-                              Avg: {formatCurrency(vehicleValue.avg || 0, vehicleValue.currency || 'USD')}
-                            </span>
-                            <span className="text-green-600 dark:text-green-400">
-                              High: {formatCurrency(vehicleValue.high || 0, vehicleValue.currency || 'USD')}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        {/* Price comparison */}
-                        {vehicleValue.avg && item.price?.value && (
-                          <div className="mt-1 text-xs">
-                            {(() => {
-                              const difference = item.price.value - vehicleValue.avg;
-                              const percentDiff = (difference / vehicleValue.avg) * 100;
-                              const isGoodDeal = difference < 0;
-                              
-                              return (
-                                <span className={`font-medium ${isGoodDeal ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                  {isGoodDeal ? '📉 ' : '📈 '}
-                                  {isGoodDeal ? '' : '+'}{formatCurrency(Math.abs(difference))} 
-                                  ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs avg
-                                </span>
-                              );
-                            })()}
-                          </div>
-                        )}
-                      </div>
+                      <PriceBarChart
+                        low={vehicleValue.low || 0}
+                        avg={vehicleValue.avg || 0}
+                        high={vehicleValue.high || 0}
+                        currentPrice={item.price?.value}
+                        currency={vehicleValue.currency || 'USD'}
+                        className="mb-3"
+                      />
                     )}
                     
                     <div className="flex flex-wrap gap-2">
