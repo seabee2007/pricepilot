@@ -92,79 +92,57 @@ export interface VehicleHistoryPoint {
   data_points: number;
 }
 
-// Simple market value cache outside the class for immediate access
-const marketValueCache = new Map<string, { data: VehicleValueResponse; timestamp: number }>();
-const CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours
+// Simple market value cache - load from localStorage on module load
+const marketValueCache = JSON.parse(localStorage.getItem('pricepilot_vehicle_cache') || '{}');
 
-// Load cache from localStorage on module load
-const loadCacheFromStorage = () => {
-  try {
-    const stored = localStorage.getItem('pricepilot_vehicle_cache');
-    if (stored) {
-      const data = JSON.parse(stored);
-      Object.entries(data).forEach(([key, value]: [string, any]) => {
-        if (value.timestamp && (Date.now() - value.timestamp) < CACHE_DURATION) {
-          marketValueCache.set(key, value);
-        }
-      });
-      console.log(`📋 Loaded ${marketValueCache.size} vehicle values from localStorage`);
-    }
-  } catch (error) {
-    console.warn('Failed to load vehicle cache from storage:', error);
-  }
-};
-
-// Save cache to localStorage
-const saveCacheToStorage = () => {
-  try {
-    const data = Object.fromEntries(marketValueCache);
-    localStorage.setItem('pricepilot_vehicle_cache', JSON.stringify(data));
-  } catch (error) {
-    console.warn('Failed to save vehicle cache to storage:', error);
-  }
-};
-
-// Generate cache key
-const generateCacheKey = (make: string, model: string, year: number): string => {
-  return `${make.toLowerCase()}|${model.toLowerCase().replace(/\s+/g, '-')}|${year}`;
-};
-
-// Initialize cache
-loadCacheFromStorage();
-
-// Clean up expired entries every 30 minutes
-setInterval(() => {
+// Simple cache cleanup - remove expired entries
+const cleanupCache = () => {
   const now = Date.now();
-  let cleared = 0;
+  const CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours
+  let cleaned = 0;
   
-  for (const [key, value] of marketValueCache.entries()) {
-    if ((now - value.timestamp) >= CACHE_DURATION) {
-      marketValueCache.delete(key);
-      cleared++;
+  for (const key in marketValueCache) {
+    if (marketValueCache[key].timestamp && (now - marketValueCache[key].timestamp) >= CACHE_DURATION) {
+      delete marketValueCache[key];
+      cleaned++;
     }
   }
   
-  if (cleared > 0) {
-    console.log(`🧹 Cleared ${cleared} expired vehicle values from cache`);
-    saveCacheToStorage();
+  if (cleaned > 0) {
+    console.log(`🧹 Cleaned ${cleaned} expired vehicle values from cache`);
+    localStorage.setItem('pricepilot_vehicle_cache', JSON.stringify(marketValueCache));
   }
-}, 30 * 60 * 1000);
+};
+
+// Clean cache on load and every 30 minutes
+cleanupCache();
+setInterval(cleanupCache, 30 * 60 * 1000);
 
 // Master function that checks cache first, only scrapes on miss
-async function fetchMarketValue({ make, model, year, mileage, trim, zipCode }: VehicleValueRequest): Promise<VehicleValueResponse> {
-  const key = generateCacheKey(make, model, year);
-  
-  // Check cache first - short circuit on hit
-  const cached = marketValueCache.get(key);
-  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
-    console.log(`📋 Cache HIT for ${key}`);
-    return { ...cached.data, cached: true };
+async function fetchVehicleValue({ make, model, year, mileage, trim, zipCode }: VehicleValueRequest): Promise<VehicleValueResponse> {
+  const key = [
+    make.toLowerCase(),
+    model.toLowerCase().replace(/\s+/g, '-'),
+    year
+  ].join('|');
+
+  // 1) First check cache
+  if (marketValueCache[key]) {
+    const cached = marketValueCache[key];
+    const CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours
+    
+    if (cached.timestamp && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+      console.log(`📋 Cache HIT for ${key}`);
+      return { ...cached.data, cached: true };
+    } else {
+      // Cache expired, remove it
+      delete marketValueCache[key];
+    }
   }
 
-  // Only log scraping messages on cache miss
-  console.log(`📋 Cache MISS for ${key}`);
-  console.log(`🚗 Fetching vehicle market value via scraping for:`, { make, model, year, mileage, trim, zipCode });
-
+  // 2) Only log & scrape on a cache miss
+  console.log(`🚗 Cache MISS — fetching vehicle value for: ${make} ${model} ${year}`);
+  
   // Perform the actual scrape
   const { data, error } = await supabase.functions.invoke('scrape-vehicle-market-value', {
     body: { make, model, year, mileage, trim, zipCode }
@@ -181,164 +159,20 @@ async function fetchMarketValue({ make, model, year, mileage, trim, zipCode }: V
 
   console.log(`✅ Vehicle market value SUCCESS for ${key}:`, data);
   
-  // Cache the successful result
-  marketValueCache.set(key, {
+  // 3) Store back into both in-memory cache and localStorage
+  marketValueCache[key] = {
     data: data as VehicleValueResponse,
     timestamp: Date.now()
-  });
-  saveCacheToStorage();
+  };
+  localStorage.setItem('pricepilot_vehicle_cache', JSON.stringify(marketValueCache));
 
   return data as VehicleValueResponse;
 }
 
-// Enhanced Vehicle Value Cache with localStorage persistence
-class VehicleValueCacheManager {
-  private cache = new Map<string, { data: VehicleValueResponse; timestamp: number }>();
-  private activeRequests = new Map<string, Promise<VehicleValueResponse>>();
-  private readonly CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours
-  private readonly STORAGE_KEY = 'pricepilot_vehicle_cache';
-
-  constructor() {
-    this.loadFromStorage();
-  }
-
-  private loadFromStorage() {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (stored) {
-        const data = JSON.parse(stored);
-        Object.entries(data).forEach(([key, value]: [string, any]) => {
-          if (value.timestamp && (Date.now() - value.timestamp) < this.CACHE_DURATION) {
-            this.cache.set(key, value);
-          }
-        });
-        console.log(`📋 Loaded ${this.cache.size} vehicle values from localStorage`);
-      }
-    } catch (error) {
-      console.warn('Failed to load vehicle cache from storage:', error);
-    }
-  }
-
-  private saveToStorage() {
-    try {
-      const data = Object.fromEntries(this.cache);
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-    } catch (error) {
-      console.warn('Failed to save vehicle cache to storage:', error);
-    }
-  }
-
-  private generateKey(request: VehicleValueRequest): string {
-    return `${request.make}|${request.model}|${request.year}`.toLowerCase().replace(/\s+/g, '-');
-  }
-
-  async get(request: VehicleValueRequest): Promise<VehicleValueResponse | null> {
-    const key = this.generateKey(request);
-    const cached = this.cache.get(key);
-    
-    if (cached && (Date.now() - cached.timestamp) < this.CACHE_DURATION) {
-      console.log(`📋 Cache HIT for ${key}`);
-      return { ...cached.data, cached: true };
-    }
-    
-    if (cached) {
-      console.log(`📋 Cache EXPIRED for ${key}, removing`);
-      this.cache.delete(key);
-      this.saveToStorage();
-    }
-    
-    return null;
-  }
-
-  async fetch(request: VehicleValueRequest): Promise<VehicleValueResponse> {
-    const key = this.generateKey(request);
-    
-    // Check if we already have an active request for this vehicle
-    if (this.activeRequests.has(key)) {
-      console.log(`⏳ Request DEDUPED for ${key} - joining existing request`);
-      return this.activeRequests.get(key)!;
-    }
-
-    // Check cache first
-    const cached = await this.get(request);
-    if (cached) {
-      return cached;
-    }
-
-    console.log(`🌐 Cache MISS for ${key} - fetching from server`);
-    
-    // Create and store the active request promise
-    const requestPromise = this.performFetch(request, key);
-    this.activeRequests.set(key, requestPromise);
-    
-    try {
-      const result = await requestPromise;
-      
-      // Cache the successful result
-      this.cache.set(key, {
-        data: result,
-        timestamp: Date.now()
-      });
-      this.saveToStorage();
-      
-      return result;
-    } finally {
-      // Clean up the active request
-      this.activeRequests.delete(key);
-    }
-  }
-
-  private async performFetch(request: VehicleValueRequest, key: string): Promise<VehicleValueResponse> {
-    const { data, error } = await supabase.functions.invoke('scrape-vehicle-market-value', {
-      body: request
-    });
-
-    if (error) {
-      console.error(`❌ Vehicle market value error for ${key}:`, error);
-      throw new Error(error.message || 'Failed to get vehicle market value');
-    }
-
-    if (!data.success) {
-      throw new Error(data.error || 'Vehicle market value lookup failed');
-    }
-
-    console.log(`✅ Vehicle market value SUCCESS for ${key}:`, data);
-    return data as VehicleValueResponse;
-  }
-
-  clearExpired() {
-    const now = Date.now();
-    let cleared = 0;
-    
-    for (const [key, value] of this.cache.entries()) {
-      if ((now - value.timestamp) >= this.CACHE_DURATION) {
-        this.cache.delete(key);
-        cleared++;
-      }
-    }
-    
-    if (cleared > 0) {
-      console.log(`🧹 Cleared ${cleared} expired vehicle values from cache`);
-      this.saveToStorage();
-    }
-  }
-
-  getStats() {
-    return {
-      cacheSize: this.cache.size,
-      activeRequests: this.activeRequests.size,
-      cacheKeys: Array.from(this.cache.keys())
-    };
-  }
-}
-
-// Singleton cache manager (keeping for backward compatibility)
-const vehicleCache = new VehicleValueCacheManager();
-
 // Vehicle Value Functions - New Scraping Approach with Enhanced Caching
 export async function getVehicleMarketValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
   try {
-    return await fetchMarketValue(request);
+    return await fetchVehicleValue(request);
   } catch (error) {
     console.error('💥 Error getting vehicle market value:', error);
     throw error;
@@ -348,7 +182,7 @@ export async function getVehicleMarketValue(request: VehicleValueRequest): Promi
 // Legacy function for backward compatibility
 export async function getVehicleValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
   try {
-    const scrapingResult = await fetchMarketValue(request);
+    const scrapingResult = await fetchVehicleValue(request);
     
     // Convert scraping result to legacy format for backward compatibility
     return {
@@ -476,7 +310,10 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
 
 // Debug function to check cache stats
 export function getVehicleCacheStats() {
-  return vehicleCache.getStats();
+  return {
+    cacheSize: Object.keys(marketValueCache).length,
+    cacheKeys: Object.keys(marketValueCache)
+  };
 }
 
 // Debug function to check what's in the price history table
