@@ -295,12 +295,29 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                          {formatCurrency(vehicleValue.value, vehicleValue.currency)}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Market Value • {vehicleValue.cached ? 'Cached' : 'Live'} Data
-                        </p>
+                        {/* Display enhanced market value data */}
+                        {vehicleValue.low !== undefined && vehicleValue.avg !== undefined && vehicleValue.high !== undefined ? (
+                          <div className="space-y-1">
+                            <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                              {formatCurrency(vehicleValue.avg, vehicleValue.currency)}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Range: {formatCurrency(vehicleValue.low, vehicleValue.currency)} - {formatCurrency(vehicleValue.high, vehicleValue.currency)}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Market Value • {vehicleValue.cached ? 'Cached' : 'Live'} Data
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                              {formatCurrency(vehicleValue.value || 0, vehicleValue.currency)}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Market Value • {vehicleValue.cached ? 'Cached' : 'Live'} Data
+                            </p>
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <DollarSign className="w-6 h-6 text-green-500 dark:text-green-400" />
@@ -317,8 +334,10 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                           </span>
                         </div>
                         {(() => {
-                          const difference = savedItem.price - vehicleValue.value;
-                          const percentDiff = (difference / vehicleValue.value) * 100;
+                          // Use average value for comparison, fallback to single value
+                          const marketValue = vehicleValue.avg || vehicleValue.value || 0;
+                          const difference = savedItem.price - marketValue;
+                          const percentDiff = (difference / marketValue) * 100;
                           const isGoodDeal = difference < 0; // Below market value is good
                           
                           return (
@@ -330,7 +349,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                               )}
                               <span className="text-xs font-medium">
                                 {isGoodDeal ? '' : '+'}{formatCurrency(Math.abs(difference))} 
-                                ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs market
+                                ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs {vehicleValue.avg ? 'avg' : 'market'}
                               </span>
                             </div>
                           );
@@ -339,7 +358,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                     )}
                     
                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                      Data from RapidAPI • Updated: {new Date(vehicleValue.timestamp).toLocaleDateString()}
+                      Data from {vehicleValue.source === 'web_scraping' ? 'Web Scraping' : 'RapidAPI'} • Updated: {new Date(vehicleValue.timestamp).toLocaleDateString()}
                     </div>
                   </div>
                 ) : (

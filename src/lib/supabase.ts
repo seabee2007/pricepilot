@@ -72,7 +72,10 @@ export interface VehicleValueRequest {
 }
 
 export interface VehicleValueResponse {
-  value: number;
+  low?: number;
+  avg?: number;
+  high?: number;
+  value?: number; // For backward compatibility with old API response
   currency: string;
   make: string;
   model: string;
@@ -597,29 +600,46 @@ export async function sendTestEmail(): Promise<{ success: boolean; message: stri
   }
 }
 
-// Vehicle Value Functions
-export async function getVehicleValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
+// Vehicle Value Functions - New Scraping Approach
+export async function getVehicleMarketValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
   try {
-    console.log('🚗 Fetching vehicle value for:', request);
+    console.log('🚗 Fetching vehicle market value via scraping for:', request);
 
-    const { data, error } = await supabase.functions.invoke('get-vehicle-value', {
+    const { data, error } = await supabase.functions.invoke('scrape-vehicle-market-value', {
       body: request
     });
 
     if (error) {
-      console.error('❌ Vehicle value error:', error);
-      throw new Error(error.message || 'Failed to get vehicle value');
+      console.error('❌ Vehicle market value error:', error);
+      throw new Error(error.message || 'Failed to get vehicle market value');
     }
 
     if (!data.success) {
-      throw new Error(data.error || 'Vehicle value lookup failed');
+      throw new Error(data.error || 'Vehicle market value lookup failed');
     }
 
-    console.log('✅ Vehicle value response:', data);
+    console.log('✅ Vehicle market value response:', data);
     return data as VehicleValueResponse;
 
   } catch (error) {
-    console.error('💥 Error getting vehicle value:', error);
+    console.error('💥 Error getting vehicle market value:', error);
+    throw error;
+  }
+}
+
+// Legacy function for backward compatibility
+export async function getVehicleValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
+  try {
+    console.log('🚗 Using legacy vehicle value function - redirecting to scraping approach');
+    const scrapingResult = await getVehicleMarketValue(request);
+    
+    // Convert scraping result to legacy format for backward compatibility
+    return {
+      ...scrapingResult,
+      value: scrapingResult.avg || 0 // Use avg as the single value for legacy compatibility
+    };
+  } catch (error) {
+    console.error('💥 Vehicle value lookup failed:', error);
     throw error;
   }
 }
