@@ -320,6 +320,7 @@ VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
             items={items} 
             mode={mode} 
             isLoading={loading}
+            category={filters.category}
           />
           
           {mode === 'sell' && !loading && (

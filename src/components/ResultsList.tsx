@@ -11,16 +11,17 @@ interface ResultsListProps {
   items: ItemSummary[];
   mode: SearchMode;
   isLoading?: boolean;
+  category?: string;
 }
 
-const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
+const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListProps) => {
   const [sortField, setSortField] = useState<'price' | 'shipping'>('price');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(mode === 'buy' ? 'asc' : 'desc');
   const [savedItemIds, setSavedItemIds] = useState<Set<string>>(new Set());
   const [savingItems, setSavingItems] = useState<Set<string>>(new Set());
 
-  // 🔥 NEW: Extract unique vehicle keys and fetch values once
-  const uniqueVehicleKeys = extractUniqueVehicleKeys(items);
+  // 🔥 NEW: Extract unique vehicle keys and fetch values once - only for motors category
+  const uniqueVehicleKeys = extractUniqueVehicleKeys(items, category);
   const { valueMap: vehicleValueMap, loading: vehicleValuesLoading } = useVehicleValueMap(uniqueVehicleKeys);
 
   // Check which items are already saved when component mounts
@@ -199,8 +200,8 @@ const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
             const isSaved = savedItemIds.has(item.itemId);
             const isSaving = savingItems.has(item.itemId);
             
-            // 🚗 NEW: Get vehicle value data for this item
-            const vehicleInfo = parseVehicleFromQuery(item.title);
+            // 🚗 NEW: Get vehicle value data for this item - only for motors category
+            const vehicleInfo = category === 'motors' ? parseVehicleFromQuery(item.title) : null;
             const vehicleKey = vehicleInfo?.make && vehicleInfo?.model && vehicleInfo?.year 
               ? `${vehicleInfo.make}|${vehicleInfo.model}|${vehicleInfo.year}`
               : null;

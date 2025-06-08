@@ -17,8 +17,16 @@ export type VehicleValueMap = Record<string, VehicleValue>;
 /**
  * Extract unique vehicle keys from search results
  * Returns an array of unique "make|model|year" keys
+ * Only processes items if category is 'motors' (cars & trucks)
  */
-export function extractUniqueVehicleKeys(items: ItemSummary[]): string[] {
+export function extractUniqueVehicleKeys(items: ItemSummary[], category?: string): string[] {
+  // Only parse vehicle information for motors category (cars & trucks)
+  if (category !== 'motors') {
+    console.log('🚗 Skipping vehicle parsing - not a motors category search:', category);
+    return [];
+  }
+
+  console.log('🚗 Processing vehicle parsing for motors category');
   const vehicleKeysSet = new Set<string>();
   
   items.forEach(item => {

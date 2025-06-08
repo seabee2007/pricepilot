@@ -16,7 +16,23 @@ const SavedItemsPage = () => {
   const [alertLoading, setAlertLoading] = useState(false);
 
   // 🔥 NEW: Extract unique vehicle keys and fetch values once for all saved items
+  // Only try to parse vehicle info for items that appear to be vehicles
   const uniqueVehicleKeys = savedItems
+    .filter(item => {
+      const title = (item.title || '').toLowerCase();
+      // Skip obvious non-vehicle categories
+      if (title.includes('iphone') || title.includes('ipad') || title.includes('phone') || 
+          title.includes('laptop') || title.includes('computer') || title.includes('electronics') ||
+          title.includes('charger') || title.includes('cable') || title.includes('headphones') ||
+          title.includes('earbuds') || title.includes('case') || title.includes('screen protector')) {
+        return false;
+      }
+      // Only process items that might contain vehicle information
+      const vehicleKeywords = ['ford', 'chevrolet', 'dodge', 'toyota', 'honda', 'nissan', 'bmw', 'mercedes', 
+                               'audi', 'volkswagen', 'jeep', 'ram', 'gmc', 'cadillac', 'buick', 'lincoln', 
+                               'car', 'truck', 'vehicle', 'auto', 'mustang', 'camaro', 'corvette', 'f-150'];
+      return vehicleKeywords.some(keyword => title.includes(keyword));
+    })
     .map(item => {
       const vehicleInfo = parseVehicleFromQuery(item.title || '');
       return vehicleInfo?.make && vehicleInfo?.model && vehicleInfo?.year 
@@ -157,8 +173,14 @@ const SavedItemsPage = () => {
       ) : (
         <div className="grid gap-6">
           {savedItems.map(savedItem => {
-            // 🚗 NEW: Get vehicle value data for this saved item
-            const vehicleInfo = parseVehicleFromQuery(savedItem.title || '');
+            // 🚗 NEW: Get vehicle value data for this saved item - only for likely vehicle items
+            const title = (savedItem.title || '').toLowerCase();
+            const isLikelyVehicle = !title.includes('iphone') && !title.includes('ipad') && !title.includes('phone') && 
+                                   !title.includes('laptop') && !title.includes('computer') && !title.includes('electronics') &&
+                                   !title.includes('charger') && !title.includes('cable') && !title.includes('headphones') &&
+                                   !title.includes('earbuds') && !title.includes('case') && !title.includes('screen protector');
+            
+            const vehicleInfo = isLikelyVehicle ? parseVehicleFromQuery(savedItem.title || '') : null;
             const vehicleKey = vehicleInfo?.make && vehicleInfo?.model && vehicleInfo?.year 
               ? `${vehicleInfo.make}|${vehicleInfo.model}|${vehicleInfo.year}`
               : null;
