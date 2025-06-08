@@ -5,7 +5,7 @@ import Button from './ui/Button';
 import { updateSavedItem, parseVehicleFromQuery, getVehicleValue, VehicleValueResponse, debugPriceHistory } from '../lib/supabase';
 import { useDebounce, useDeduplicatedCallback } from '../lib/hooks';
 import toast from 'react-hot-toast';
-import PriceHistoryChart from './PriceHistoryChart';
+import { VehicleMarketValue } from './VehicleMarketValue';
 
 interface SavedItemCardProps {
   savedItem: SavedItem;
@@ -418,11 +418,24 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                 )}
               </div>
             </>
-          ) : (
+          ) : vehicleInfo && vehicleInfo.make && vehicleInfo.model && vehicleInfo.year ? (
             <>
-              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">30-Day Price History</h4>
-              <PriceHistoryChart query={savedItem.title || ''} searchId={savedItem.id} />
+              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Market Value Analysis</h4>
+              <VehicleMarketValue 
+                make={vehicleInfo.make} 
+                model={vehicleInfo.model} 
+                year={vehicleInfo.year}
+                mileage={vehicleInfo.mileage}
+                trim={vehicleInfo.trim}
+                zipCode={vehicleInfo.zipCode}
+              />
             </>
+          ) : (
+            <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Vehicle market value not available
+              </p>
+            </div>
           )}
         </div>
       )}
