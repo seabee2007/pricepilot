@@ -3,7 +3,7 @@ import { ItemSummary, SearchMode } from '../types';
 import { formatCurrency, truncateText, getConditionName } from '../lib/utils';
 import { ArrowUp, ArrowDown, ExternalLink, BookmarkPlus, Truck, Shield, Heart, HeartOff } from 'lucide-react';
 import Button from './ui/Button';
-import { saveItem, checkIfItemSaved, deleteSavedItem, getSavedItems } from '../lib/supabase';
+import { saveIndividualItem, checkIfItemSaved, deleteSavedItem, getAllSavedItems } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 interface ResultsListProps {
@@ -23,8 +23,13 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
   useState(() => {
     const checkSavedItems = async () => {
       try {
-        const savedItems = await getSavedItems();
-        const savedIds = new Set(savedItems.map(item => item.item_id));
+        const savedItems = await getAllSavedItems();
+        // Filter for individual items only and ensure item_id is not undefined
+        const savedIds = new Set(
+          savedItems
+            .filter(item => item.item_type === 'item' && item.item_id)
+            .map(item => item.item_id!)
+        );
         setSavedItemIds(savedIds);
       } catch (error) {
         console.error('Error checking saved items:', error);
@@ -76,8 +81,10 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
     try {
       if (savedItemIds.has(item.itemId)) {
         // Item is saved, remove it
-        const savedItems = await getSavedItems();
-        const savedItem = savedItems.find(saved => saved.item_id === item.itemId);
+        const savedItems = await getAllSavedItems();
+        const savedItem = savedItems.find(saved => 
+          saved.item_type === 'item' && saved.item_id === item.itemId
+        );
         
         if (savedItem) {
           await deleteSavedItem(savedItem.id);
@@ -90,21 +97,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
         }
       } else {
         // Item is not saved, save it
-        await saveItem({
-          itemId: item.itemId,
-          title: item.title,
-          price: item.price?.value || 0,
-          currency: item.price?.currency || 'USD',
-          imageUrl: item.image?.imageUrl,
-          itemUrl: item.itemWebUrl,
-          condition: item.condition,
-          sellerUsername: item.seller?.username,
-          sellerFeedbackScore: item.seller?.feedbackScore,
-          sellerFeedbackPercentage: item.seller?.feedbackPercentage,
-          shippingCost: item.shippingOptions?.[0]?.shippingCost?.value,
-          shippingCurrency: item.shippingOptions?.[0]?.shippingCost?.currency,
-          buyingOptions: item.buyingOptions,
-        });
+        await saveIndividualItem(item);
 
         setSavedItemIds(prev => new Set(prev).add(item.itemId));
         toast.success('Item saved successfully!');
