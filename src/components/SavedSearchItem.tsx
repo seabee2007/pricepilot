@@ -85,6 +85,13 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
   const vehicleInfo = parseVehicleFromQuery(savedItem.title || '');
   const isVehicleItem = vehicleInfo !== null;
 
+  // Debug logging
+  console.log('🚗 SavedItemCard Debug:', {
+    title: savedItem.title,
+    vehicleInfo,
+    isVehicleItem
+  });
+
   // Fetch vehicle value when component mounts for vehicle items
   useEffect(() => {
     const fetchVehicleValue = async () => {

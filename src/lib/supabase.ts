@@ -657,6 +657,8 @@ export async function getVehicleHistory(make: string, model: string, year: numbe
 // Helper function to extract vehicle info from search query
 export function parseVehicleFromQuery(query: string): Partial<VehicleValueRequest> | null {
   try {
+    console.log('🔍 Parsing vehicle from query:', query);
+    
     // Basic regex patterns to extract make, model, year
     const yearMatch = query.match(/\b(19|20)\d{2}\b/);
     const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
@@ -683,6 +685,8 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
       }
     }
 
+    console.log('🔍 Found make:', make, 'year:', year);
+
     if (make && year) {
       // Try to extract model (everything after make, before year, excluding common words)
       const makeIndex = query.toLowerCase().indexOf(make.toLowerCase());
@@ -690,15 +694,23 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
       
       if (makeIndex < yearIndex) {
         const modelPart = query.substring(makeIndex + make.length, yearIndex).trim();
-        // Clean up model name
-        model = modelPart.replace(/\b(for sale|used|new|car|auto|vehicle)\b/gi, '').trim();
+        // Clean up model name - preserve hyphens but remove common words
+        model = modelPart
+          .replace(/\b(for sale|used|new|car|auto|vehicle|truck)\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        console.log('🔍 Extracted model part:', modelPart, '-> cleaned:', model);
         
         if (model && model.length > 0) {
-          return { make, model, year };
+          const result = { make, model, year };
+          console.log('✅ Successfully parsed vehicle:', result);
+          return result;
         }
       }
     }
 
+    console.log('❌ Could not parse vehicle from query');
     return null;
   } catch (error) {
     console.error('Error parsing vehicle from query:', error);
