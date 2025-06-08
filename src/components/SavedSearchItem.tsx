@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { SavedItem, SavedItemIndividual } from '../types';
 import { ExternalLink, Trash2, Package, Edit, Check, X, Bell, TrendingUp, TrendingDown, DollarSign, Loader2 } from 'lucide-react';
 import Button from './ui/Button';
 import { updateSavedItem, parseVehicleFromQuery, getVehicleValue, VehicleValueResponse } from '../lib/supabase';
+import { useDebounce, useDeduplicatedCallback } from '../lib/hooks';
 import toast from 'react-hot-toast';
 import PriceHistoryChart from './PriceHistoryChart';
 
@@ -21,6 +22,93 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
   const [vehicleValue, setVehicleValue] = useState<VehicleValueResponse | null>(null);
   const [loadingVehicleValue, setLoadingVehicleValue] = useState(false);
   const [vehicleValueError, setVehicleValueError] = useState<string | null>(null);
+
+  // Parse vehicle info once and memoize it
+  const vehicleInfo = useMemo(() => {
+    return parseVehicleFromQuery(savedItem.title || '');
+  }, [savedItem.title]);
+
+  const isVehicleItem = vehicleInfo !== null;
+
+  // Create a stable key for the vehicle request
+  const vehicleKey = useMemo(() => {
+    if (!vehicleInfo?.make || !vehicleInfo?.model || !vehicleInfo?.year) return null;
+    return `${vehicleInfo.make}|${vehicleInfo.model}|${vehicleInfo.year}`;
+  }, [vehicleInfo?.make, vehicleInfo?.model, vehicleInfo?.year]);
+
+  // Debounced vehicle key to prevent rapid-fire requests
+  const debouncedVehicleKey = useDebounce(vehicleKey, 300);
+
+  // Deduplicated vehicle value fetcher
+  const fetchVehicleValue = useDeduplicatedCallback(
+    async (make: string, model: string, year: number) => {
+      console.log(`🚗 Fetching vehicle value for: ${make} ${model} ${year}`);
+      return await getVehicleValue({
+        make,
+        model,
+        year,
+        mileage: vehicleInfo?.mileage,
+        trim: vehicleInfo?.trim,
+        zipCode: vehicleInfo?.zipCode
+      });
+    },
+    (make: string, model: string, year: number) => `${make}|${model}|${year}`,
+    500 // 500ms debounce
+  );
+
+  // Effect to fetch vehicle value - only runs when the debounced key changes
+  useEffect(() => {
+    if (!debouncedVehicleKey || !vehicleInfo?.make || !vehicleInfo?.model || !vehicleInfo?.year) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const performFetch = async () => {
+      setLoadingVehicleValue(true);
+      setVehicleValueError(null);
+      
+      try {
+        const value = await fetchVehicleValue(
+          vehicleInfo.make!,
+          vehicleInfo.model!,
+          vehicleInfo.year!
+        );
+        
+        if (isMounted) {
+          setVehicleValue(value);
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error('Error fetching vehicle value:', error);
+          
+          // Handle specific error types
+          let errorMessage = 'Failed to get vehicle value';
+          if (error instanceof Error) {
+            if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+              errorMessage = 'Rate limit reached. Please try again in a few minutes.';
+            } else if (error.message.includes('network') || error.message.includes('fetch')) {
+              errorMessage = 'Network error. Please check your connection.';
+            } else {
+              errorMessage = error.message;
+            }
+          }
+          
+          setVehicleValueError(errorMessage);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingVehicleValue(false);
+        }
+      }
+    };
+
+    performFetch();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [debouncedVehicleKey, fetchVehicleValue, vehicleInfo?.make, vehicleInfo?.model, vehicleInfo?.year]);
 
   const handleDelete = () => {
     onDelete(savedItem.id);
@@ -81,10 +169,6 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
     return null; // Don't render search queries anymore
   }
 
-  // Detect if this is a vehicle item
-  const vehicleInfo = parseVehicleFromQuery(savedItem.title || '');
-  const isVehicleItem = vehicleInfo !== null;
-
   // Debug logging for development
   if (process.env.NODE_ENV === 'development') {
     console.log('🚗 SavedItemCard Debug:', {
@@ -93,54 +177,6 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
       isVehicleItem
     });
   }
-
-  // Fetch vehicle value when component mounts for vehicle items
-  useEffect(() => {
-    const fetchVehicleValue = async () => {
-      if (!isVehicleItem || !vehicleInfo || !vehicleInfo.make || !vehicleInfo.model || !vehicleInfo.year) return;
-      
-      setLoadingVehicleValue(true);
-      setVehicleValueError(null);
-      
-      try {
-        // Add a small delay to prevent overwhelming the API and stagger requests
-        const delay = Math.random() * 1000 + 500; // 500-1500ms delay
-        await new Promise(resolve => setTimeout(resolve, delay));
-        
-        const value = await getVehicleValue({
-          make: vehicleInfo.make,
-          model: vehicleInfo.model,
-          year: vehicleInfo.year,
-          mileage: vehicleInfo.mileage,
-          trim: vehicleInfo.trim,
-          zipCode: vehicleInfo.zipCode
-        });
-        setVehicleValue(value);
-      } catch (error) {
-        console.error('Error fetching vehicle value:', error);
-        
-        // Handle specific error types
-        let errorMessage = 'Failed to get vehicle value';
-        if (error instanceof Error) {
-          if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
-            errorMessage = 'Rate limit reached. Please try again in a few minutes.';
-          } else if (error.message.includes('network') || error.message.includes('fetch')) {
-            errorMessage = 'Network error. Please check your connection.';
-          } else {
-            errorMessage = error.message;
-          }
-        }
-        
-        setVehicleValueError(errorMessage);
-      } finally {
-        setLoadingVehicleValue(false);
-      }
-    };
-
-    // Debounce the fetch to prevent multiple rapid calls
-    const timeoutId = setTimeout(fetchVehicleValue, 100);
-    return () => clearTimeout(timeoutId);
-  }, [isVehicleItem, vehicleInfo?.make, vehicleInfo?.model, vehicleInfo?.year]); // More specific dependencies
 
   const formatCurrency = (value: number, currency: string = 'USD') => {
     return new Intl.NumberFormat('en-US', {
