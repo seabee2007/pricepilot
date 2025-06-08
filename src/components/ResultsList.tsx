@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ItemSummary, SearchMode } from '../types';
 import { formatCurrency, truncateText, getConditionName } from '../lib/utils';
-import { ArrowUp, ArrowDown, ExternalLink, Truck, Shield, Heart, HeartOff } from 'lucide-react';
+import { ExternalLink, Truck, Shield, Heart, HeartOff } from 'lucide-react';
 import Button from './ui/Button';
 import { saveIndividualItem, checkIfItemSaved, deleteSavedItem, getAllSavedItems, parseVehicleFromQuery } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -15,41 +15,12 @@ interface ResultsListProps {
 }
 
 const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListProps) => {
-  const [sortField, setSortField] = useState<'price' | 'shipping'>('price');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(mode === 'buy' ? 'asc' : 'desc');
   const [savedItemIds, setSavedItemIds] = useState<Set<string>>(new Set());
   const [savingItems, setSavingItems] = useState<Set<string>>(new Set());
 
   // 🔥 NEW: Extract unique vehicle keys and fetch values once - only for motors category
   const uniqueVehicleKeys = extractUniqueVehicleKeys(items, category);
   const { valueMap: vehicleValueMap, loading: vehicleValuesLoading } = useVehicleValueMap(uniqueVehicleKeys);
-
-  // NEW: Keep eBay's relevance order by default, only apply price sorting when user explicitly requests it
-  // This mirrors eBay's web experience where relevance is primary
-  const [useManualSort, setUseManualSort] = useState(false);
-  
-  // Use eBay's original order by default (bestMatch relevance), unless user wants manual sorting
-  const displayItems = useManualSort ? (() => {
-    // Apply manual sorting only when requested
-    const sorted = [...items].sort((a, b) => {
-      if (sortField === 'price') {
-        const aPrice = a.price?.value || 0;
-        const bPrice = b.price?.value || 0;
-        return sortDirection === 'asc' ? aPrice - bPrice : bPrice - aPrice;
-      } else {
-        const aShipping = a.shippingOptions?.[0]?.shippingCost?.value || 0;
-        const bShipping = b.shippingOptions?.[0]?.shippingCost?.value || 0;
-        return sortDirection === 'asc' ? aShipping - bShipping : bShipping - aShipping;
-      }
-    });
-    
-    console.log(`🔄 Manual sort applied: ${sortField} (${sortDirection})`);
-    return sorted;
-  })() : (() => {
-    // Keep eBay's original bestMatch relevance order
-    console.log(`🎯 Using eBay's relevance order (bestMatch)`);
-    return items;
-  })();
 
   // Check which items are already saved when component mounts
   useEffect(() => {
@@ -80,9 +51,6 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
   console.log('Is loading:', isLoading);
   console.log('Mode:', mode);
   console.log('Category:', category);
-  console.log('Using manual sort:', useManualSort);
-  console.log('Sort field:', sortField, 'Direction:', sortDirection);
-  console.log('Items is array?', Array.isArray(items));
   console.log('🚗 Unique vehicle keys found:', uniqueVehicleKeys);
   console.log('🚗 Vehicle values loading:', vehicleValuesLoading);
   console.log('🚗 Vehicle value map:', vehicleValueMap);
@@ -91,22 +59,6 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
     console.log('🎯 Will show in eBay relevance order unless manually sorted');
   }
   console.groupEnd();
-
-  const handleSort = (field: 'price' | 'shipping') => {
-    setUseManualSort(true); // Enable manual sorting when user clicks
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection(mode === 'buy' ? 'asc' : 'desc');
-    }
-  };
-
-  // Add a button to reset to eBay's relevance order
-  const handleResetToRelevance = () => {
-    setUseManualSort(false);
-    console.log('🎯 Reset to eBay relevance order');
-  };
 
   const handleSaveItem = async (item: ItemSummary, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent opening eBay listing
@@ -183,69 +135,20 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           {items.length} {mode === 'buy' ? 'Deals' : 'Completed Sales'} Found
         </h2>
-        
-        {/* Sort Mode Indicator & Reset Button */}
-        <div className="flex items-center gap-3">
-          {useManualSort ? (
-            <>
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                Sorted by {sortField} ({sortDirection === 'asc' ? 'low to high' : 'high to low'})
-              </span>
-              <button
-                onClick={handleResetToRelevance}
-                className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-              >
-                Reset to relevance
-              </button>
-            </>
-          ) : (
-            <span className="text-sm text-green-600 dark:text-green-400 font-medium">
-              🎯 Best Match (eBay relevance)
-            </span>
-          )}
-        </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
-        {/* Sort Header */}
+        {/* Header */}
         <div className="flex items-center bg-gray-50 dark:bg-gray-900 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          <div className="w-full sm:w-3/5">
-            Item {!useManualSort && <span className="text-green-600 dark:text-green-400">(by relevance)</span>}
+          <div className="flex-1">
+            Item <span className="text-green-600 dark:text-green-400">(sorted by eBay relevance)</span>
           </div>
-          <button 
-            className={`hidden sm:flex w-1/5 items-center ${
-              useManualSort && sortField === 'price' ? 'text-blue-600 dark:text-blue-400' : 'hover:text-blue-600 dark:hover:text-blue-400'
-            }`}
-            onClick={() => handleSort('price')}
-            title="Click to sort by price"
-          >
-            Price
-            {useManualSort && sortField === 'price' && (
-              sortDirection === 'asc' ? 
-                <ArrowUp className="ml-1 h-3 w-3" /> : 
-                <ArrowDown className="ml-1 h-3 w-3" />
-            )}
-          </button>
-          <button 
-            className={`hidden sm:flex w-1/5 items-center ${
-              useManualSort && sortField === 'shipping' ? 'text-blue-600 dark:text-blue-400' : 'hover:text-blue-600 dark:hover:text-blue-400'
-            }`}
-            onClick={() => handleSort('shipping')}
-            title="Click to sort by shipping cost"
-          >
-            Shipping
-            {useManualSort && sortField === 'shipping' && (
-              sortDirection === 'asc' ? 
-                <ArrowUp className="ml-1 h-3 w-3" /> : 
-                <ArrowDown className="ml-1 h-3 w-3" />
-            )}
-          </button>
-          <div className="hidden sm:block w-16 text-center">Save</div>
+          <div className="w-16 text-center">Save</div>
         </div>
         
         {/* Results */}
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {displayItems.map((item, i) => {
+          {items.map((item, i) => {
             console.log('🎨 Rendering item', i, item);
             console.log('🎨 Item ID:', item.itemId);
             console.log('🎨 Item title:', item.title);
@@ -264,186 +167,119 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
             return (
               <div 
                 key={item.itemId} 
-                className="flex flex-col sm:flex-row hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-150"
+                className="flex items-start hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-150"
               >
-                {/* Mobile layout: flex row with link and save button separate */}
-                <div className="flex sm:contents">
-                  <a 
-                    href={item.itemWebUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-start p-4 flex-1 sm:w-3/5 cursor-pointer hover:no-underline"
-                  >
-                    {/* Responsive Image Container */}
-                    <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-[120px] md:w-[120px] lg:h-[140px] lg:w-[140px] xl:h-[160px] xl:w-[160px] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
-                      {item.image?.imageUrl ? (
-                        <img 
-                          src={item.image.imageUrl} 
-                          alt={item.title} 
-                          className="h-full w-full object-cover hover:scale-105 transition-transform duration-200"
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs text-center">
-                          No Image
-                        </div>
-                      )}
-                    </div>
-                    <div className="ml-4 flex-1 min-w-0">
-                      <h3 className="text-sm sm:text-base font-medium text-gray-900 dark:text-gray-100 line-clamp-2 hover:underline mb-2">
-                        {truncateText(item.title, 80)}
-                      </h3>
-                      
-                      {/* Mobile Price/Shipping Info */}
-                      <div className="sm:hidden mb-3 space-y-1">
-                        <div className="flex justify-between items-center">
-                          <span className="text-lg font-bold text-gray-900 dark:text-white">
-                            {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
-                          </span>
-                          <div className="flex items-center text-sm">
-                            {item.shippingOptions && item.shippingOptions[0]?.shippingCost?.value === 0 ? (
-                              <span className="text-green-600 dark:text-green-400 font-medium flex items-center">
-                                <Truck className="mr-1 h-4 w-4" />
-                                Free Shipping
-                              </span>
-                            ) : (
-                              <span className="text-gray-600 dark:text-gray-400">
-                                + {item.shippingOptions && item.shippingOptions[0]?.shippingCost
-                                  ? formatCurrency(item.shippingOptions[0].shippingCost.value, item.shippingOptions[0].shippingCost.currency)
-                                  : 'shipping'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 🚗 NEW: Vehicle Market Value Section */}
-                      {vehicleValue && (
-                        <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-blue-600 dark:text-blue-400 font-medium">Market Value:</span>
-                            <div className="flex gap-3 text-xs">
-                              <span className="text-red-600 dark:text-red-400">
-                                Low: {formatCurrency(vehicleValue.low || 0, vehicleValue.currency || 'USD')}
-                              </span>
-                              <span className="text-blue-600 dark:text-blue-400 font-semibold">
-                                Avg: {formatCurrency(vehicleValue.avg || 0, vehicleValue.currency || 'USD')}
-                              </span>
-                              <span className="text-green-600 dark:text-green-400">
-                                High: {formatCurrency(vehicleValue.high || 0, vehicleValue.currency || 'USD')}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          {/* Price comparison */}
-                          {vehicleValue.avg && item.price?.value && (
-                            <div className="mt-1 text-xs">
-                              {(() => {
-                                const difference = item.price.value - vehicleValue.avg;
-                                const percentDiff = (difference / vehicleValue.avg) * 100;
-                                const isGoodDeal = difference < 0;
-                                
-                                return (
-                                  <span className={`font-medium ${isGoodDeal ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {isGoodDeal ? '📉 ' : '📈 '}
-                                    {isGoodDeal ? '' : '+'}{formatCurrency(Math.abs(difference))} 
-                                    ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs avg
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      <div className="flex flex-wrap gap-2">
-                        {item.condition && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-                            {item.condition}
-                          </span>
-                        )}
-                        {item.buyingOptions?.includes('FIXED_PRICE') && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-                            Buy It Now
-                          </span>
-                        )}
-                        {item.seller && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                            <Shield className="mr-1 h-3 w-3" />
-                            {item.seller.feedbackScore || 0} {item.seller.feedbackPercentage && `(${item.seller.feedbackPercentage})`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </a>
-                  
-                  {/* Mobile Save Button - now outside the link */}
-                  <div className="sm:hidden flex items-center p-4 pl-0">
-                    <button
-                      onClick={(e) => handleSaveItem(item, e)}
-                      disabled={isSaving}
-                      className={`p-2 rounded-full transition-colors ${
-                        isSaved 
-                          ? 'text-red-500 hover:text-red-600 bg-red-50 dark:bg-red-900/20' 
-                          : 'text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
-                      } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      title={isSaved ? 'Remove from saved items' : 'Save this item'}
-                    >
-                      {isSaving ? (
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
-                      ) : isSaved ? (
-                        <Heart className="h-5 w-5 fill-current" />
-                      ) : (
-                        <Heart className="h-5 w-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Desktop Price Column */}
-                <div className="hidden sm:flex flex-col justify-center p-4 w-1/5">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Price:</div>
-                  <div className="text-base font-bold text-gray-900 dark:text-white">
-                    {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
-                  </div>
-                  
-                  {/* 🚗 NEW: Desktop Vehicle Value Summary */}
-                  {vehicleValue && vehicleValue.avg && (
-                    <div className="mt-1 text-xs">
-                      {(() => {
-                        const difference = (item.price?.value || 0) - vehicleValue.avg;
-                        const isGoodDeal = difference < 0;
-                        
-                        return (
-                          <span className={`font-medium ${isGoodDeal ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {isGoodDeal ? '📉 Good deal' : '📈 Above market'}
-                          </span>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
-                
-                {/* Desktop Shipping Column */}
-                <div className="hidden sm:flex flex-col justify-center p-4 w-1/5">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Shipping:</div>
-                  <div className="flex items-center">
-                    {item.shippingOptions && item.shippingOptions[0]?.shippingCost?.value === 0 ? (
-                      <span className="text-green-600 dark:text-green-400 font-medium flex items-center">
-                        <Truck className="mr-1 h-4 w-4" />
-                        Free
-                      </span>
+                {/* Item Content */}
+                <a 
+                  href={item.itemWebUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start p-4 flex-1 cursor-pointer hover:no-underline"
+                >
+                  {/* Responsive Image Container */}
+                  <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-[120px] md:w-[120px] lg:h-[140px] lg:w-[140px] xl:h-[160px] xl:w-[160px] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
+                    {item.image?.imageUrl ? (
+                      <img 
+                        src={item.image.imageUrl} 
+                        alt={item.title} 
+                        className="h-full w-full object-cover hover:scale-105 transition-transform duration-200"
+                      />
                     ) : (
-                      <span className="text-gray-800 dark:text-gray-200">
-                        {item.shippingOptions && item.shippingOptions[0]?.shippingCost
-                          ? formatCurrency(item.shippingOptions[0].shippingCost.value, item.shippingOptions[0].shippingCost.currency)
-                          : 'Not specified'}
-                      </span>
+                      <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs text-center">
+                        No Image
+                      </div>
                     )}
                   </div>
-                </div>
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-sm sm:text-base font-medium text-gray-900 dark:text-gray-100 line-clamp-2 hover:underline mb-2">
+                      {truncateText(item.title, 80)}
+                    </h3>
+                    
+                    {/* Price & Shipping Info */}
+                    <div className="mb-3 space-y-1">
+                      <div className="flex flex-wrap items-center gap-4">
+                        <span className="text-lg font-bold text-gray-900 dark:text-white">
+                          {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
+                        </span>
+                        <div className="flex items-center text-sm">
+                          {item.shippingOptions && item.shippingOptions[0]?.shippingCost?.value === 0 ? (
+                            <span className="text-green-600 dark:text-green-400 font-medium flex items-center">
+                              <Truck className="mr-1 h-4 w-4" />
+                              Free Shipping
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 dark:text-gray-400">
+                              + {item.shippingOptions && item.shippingOptions[0]?.shippingCost
+                                ? formatCurrency(item.shippingOptions[0].shippingCost.value, item.shippingOptions[0].shippingCost.currency)
+                                : 'shipping'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 🚗 NEW: Vehicle Market Value Section */}
+                    {vehicleValue && (
+                      <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-blue-600 dark:text-blue-400 font-medium">Market Value:</span>
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-red-600 dark:text-red-400">
+                              Low: {formatCurrency(vehicleValue.low || 0, vehicleValue.currency || 'USD')}
+                            </span>
+                            <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                              Avg: {formatCurrency(vehicleValue.avg || 0, vehicleValue.currency || 'USD')}
+                            </span>
+                            <span className="text-green-600 dark:text-green-400">
+                              High: {formatCurrency(vehicleValue.high || 0, vehicleValue.currency || 'USD')}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Price comparison */}
+                        {vehicleValue.avg && item.price?.value && (
+                          <div className="mt-1 text-xs">
+                            {(() => {
+                              const difference = item.price.value - vehicleValue.avg;
+                              const percentDiff = (difference / vehicleValue.avg) * 100;
+                              const isGoodDeal = difference < 0;
+                              
+                              return (
+                                <span className={`font-medium ${isGoodDeal ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {isGoodDeal ? '📉 ' : '📈 '}
+                                  {isGoodDeal ? '' : '+'}{formatCurrency(Math.abs(difference))} 
+                                  ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs avg
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    <div className="flex flex-wrap gap-2">
+                      {item.condition && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                          {item.condition}
+                        </span>
+                      )}
+                      {item.buyingOptions?.includes('FIXED_PRICE') && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                          Buy It Now
+                        </span>
+                      )}
+                      {item.seller && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                          <Shield className="mr-1 h-3 w-3" />
+                          {item.seller.feedbackScore || 0} {item.seller.feedbackPercentage && `(${item.seller.feedbackPercentage})`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </a>
                 
-                {/* Desktop Save Button */}
-                <div className="hidden sm:flex items-center justify-center p-4 w-16">
+                {/* Save Button */}
+                <div className="flex items-center p-4">
                   <button
                     onClick={(e) => handleSaveItem(item, e)}
                     disabled={isSaving}

@@ -434,7 +434,8 @@ Deno.serve(async (req) => {
       pageSize = 50,
       pageOffset = 0,
       filters = {},
-      fieldgroups = []
+      fieldgroups = [],
+      sort = 'bestMatch'
     } = body;
 
     // Extract nested vehicle aspects from filters
@@ -459,7 +460,8 @@ Deno.serve(async (req) => {
       pageSize,
       pageOffset,
       vehicleAspects: vehicleData,
-      filters: { category, conditionIds, freeShipping, buyItNowOnly }
+      filters: { category, conditionIds, freeShipping, buyItNowOnly },
+      sort: sort
     });
 
     // 🔍 DETAILED DEBUGGING FOR VEHICLE DATA EXTRACTION
@@ -593,8 +595,8 @@ Deno.serve(async (req) => {
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
-    // Use bestMatch for relevance-based results, then sort by price client-side
-    searchUrl.searchParams.append('sort', 'bestMatch');
+    // Use the sort parameter from frontend request (defaults to bestMatch)
+    searchUrl.searchParams.append('sort', sort);
     
     // Add category filter if specified and not "all" - ALWAYS add for motors
     if (category === 'motors' || (category && category !== 'all')) {

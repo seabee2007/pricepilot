@@ -78,9 +78,10 @@ export async function searchLiveItems(
   filters: SearchFilters = {},
   pageSize: number = 50,
   pageOffset: number = 0,
-  fieldgroups: string[] = []
+  fieldgroups: string[] = [],
+  sort: string = 'bestMatch'
 ): Promise<ItemSummary[]> {
-  console.log('🔍 searchLiveItems called with:', { query, filters, pageSize, pageOffset, fieldgroups });
+  console.log('🔍 searchLiveItems called with:', { query, filters, pageSize, pageOffset, fieldgroups, sort });
   
   // Check environment variables
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -94,7 +95,7 @@ export async function searchLiveItems(
     throw new Error('VITE_SUPABASE_URL environment variable is not set');
   }
   
-  const requestKey = createRequestKey('searchLiveItems', { query, filters, pageSize, pageOffset, fieldgroups });
+  const requestKey = createRequestKey('searchLiveItems', { query, filters, pageSize, pageOffset, fieldgroups, sort });
   
   return makeThrottledRequest(requestKey, async () => {
     try {
@@ -129,7 +130,8 @@ export async function searchLiveItems(
         pageSize: Math.min(Math.max(pageSize, 1), 200),
         pageOffset: Math.max(pageOffset, 0),
         mode: 'live',
-        fieldgroups
+        fieldgroups,
+        sort: sort
       });
 
       const response = await fetch(functionUrl, {
@@ -141,7 +143,8 @@ export async function searchLiveItems(
           pageSize: Math.min(Math.max(pageSize, 1), 200),
           pageOffset: Math.max(pageOffset, 0),
           mode: 'live',
-          fieldgroups
+          fieldgroups,
+          sort: sort
         }),
       });
 
