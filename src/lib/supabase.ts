@@ -233,9 +233,16 @@ export async function getSavedItemsByType(itemType: 'item' | 'search'): Promise<
 }
 
 export async function saveIndividualItem(item: ItemSummary, priceAlertThreshold?: number): Promise<void> {
+  const user = await getCurrentUser();
+  
+  if (!user) {
+    throw new Error('User must be logged in to save items');
+  }
+
   const { error } = await supabase
     .from('saved_items')
     .insert({
+      user_id: user.id, // Add user_id for RLS policy
       item_type: 'item',
       item_id: item.itemId,
       title: item.title,
@@ -264,9 +271,16 @@ export async function saveSearchQuery(
   filters: SearchFilters,
   priceThreshold: number
 ): Promise<void> {
+  const user = await getCurrentUser();
+  
+  if (!user) {
+    throw new Error('User must be logged in to save searches');
+  }
+
   const { error } = await supabase
     .from('saved_items')
     .insert({
+      user_id: user.id, // Add user_id for RLS policy
       item_type: 'search',
       search_query: query,
       search_filters: filters,
@@ -304,11 +318,18 @@ export async function deleteSavedItem(id: string): Promise<void> {
 }
 
 export async function checkIfItemSaved(itemId: string): Promise<boolean> {
+  const user = await getCurrentUser();
+  
+  if (!user) {
+    return false;
+  }
+
   const { data, error } = await supabase
     .from('saved_items')
     .select('id')
     .eq('item_type', 'item')
     .eq('item_id', itemId)
+    .eq('user_id', user.id)
     .limit(1);
 
   if (error) {
