@@ -163,6 +163,138 @@ async function scrapeCarscom(make: string, model: string, year: number): Promise
   }
 }
 
+async function scrapeEbayMotors(make: string, model: string, year: number): Promise<number[]> {
+  try {
+    const searchUrl = `https://www.ebay.com/sch/Cars-Trucks/6001/i.html?_nkw=${year}+${make}+${model}&_stpos=90210&_fspt=1&_sop=1`;
+    
+    console.log(`🔍 Scraping eBay Motors: ${searchUrl}`);
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br'
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`❌ eBay Motors request failed: ${response.status}`);
+      return [];
+    }
+
+    const html = await response.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    
+    if (!doc) {
+      return [];
+    }
+
+    const prices: number[] = [];
+    
+    // eBay Motors price selectors
+    const selectors = [
+      '.s-item__price .notranslate',
+      '.s-item__price',
+      '.notranslate[role="img"]',
+      '.cldt[data-testid="item-price"]',
+      '.u-flL.condText'
+    ];
+
+    for (const selector of selectors) {
+      const priceElements = doc.querySelectorAll(selector);
+      console.log(`🔍 Found ${priceElements.length} elements with selector: ${selector}`);
+      
+      priceElements.forEach((el) => {
+        const text = el?.textContent?.trim() || '';
+        // Match dollar amounts, handle ranges like "$15,000 to $18,000"
+        const priceMatches = text.match(/\$?([\d,]+)/g);
+        if (priceMatches) {
+          priceMatches.forEach(match => {
+            const price = parseFloat(match.replace(/[\$,]/g, ''));
+            if (!isNaN(price) && price > 1000 && price < 200000) {
+              prices.push(price);
+              console.log(`💰 Found price: $${price} from text: "${text}"`);
+            }
+          });
+        }
+      });
+      
+      if (prices.length > 0) break;
+    }
+
+    console.log(`✅ eBay Motors scraped ${prices.length} prices`);
+    return prices;
+  } catch (error) {
+    console.error('❌ eBay Motors scraping error:', error);
+    return [];
+  }
+}
+
+async function scrapeCarGurus(make: string, model: string, year: number): Promise<number[]> {
+  try {
+    const searchUrl = `https://www.cargurus.com/Cars/inventorylisting/viewDetailsFilterViewInventoryListing.action?sourceContext=carGurusHomePageModel&entitySelectingHelper.selectedEntity=${year}_${make}_${model}&zip=90210`;
+    
+    console.log(`🔍 Scraping CarGurus: ${searchUrl}`);
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`❌ CarGurus request failed: ${response.status}`);
+      return [];
+    }
+
+    const html = await response.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    
+    if (!doc) {
+      return [];
+    }
+
+    const prices: number[] = [];
+    
+    // CarGurus price selectors
+    const selectors = [
+      '[data-testid="listing-price"]',
+      '.listing-row__price',
+      '.price-section__price',
+      '[data-cg-ft="srp-listing-price"]',
+      '.cg-dealRating-price'
+    ];
+
+    for (const selector of selectors) {
+      const priceElements = doc.querySelectorAll(selector);
+      console.log(`🔍 Found ${priceElements.length} elements with selector: ${selector}`);
+      
+      priceElements.forEach((el) => {
+        const text = el?.textContent?.trim() || '';
+        const priceMatch = text.match(/\$?([\d,]+)/);
+        if (priceMatch) {
+          const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+          if (!isNaN(price) && price > 1000 && price < 200000) {
+            prices.push(price);
+            console.log(`💰 Found price: $${price} from text: "${text}"`);
+          }
+        }
+      });
+      
+      if (prices.length > 0) break;
+    }
+
+    console.log(`✅ CarGurus scraped ${prices.length} prices`);
+    return prices;
+  } catch (error) {
+    console.error('❌ CarGurus scraping error:', error);
+    return [];
+  }
+}
+
 serve(async (req) => {
   try {
     // Handle CORS preflight
@@ -220,13 +352,15 @@ serve(async (req) => {
     }
 
     // Scrape from multiple sources in parallel
-    const [autoTraderPrices, carsPrices] = await Promise.all([
+    const [autoTraderPrices, carsPrices, ebayPrices, carGurusPrices] = await Promise.all([
       scrapeAutoTrader(make, model, year),
-      scrapeCarscom(make, model, year)
+      scrapeCarscom(make, model, year),
+      scrapeEbayMotors(make, model, year),
+      scrapeCarGurus(make, model, year)
     ]);
 
     // Combine all prices
-    const allPrices = [...autoTraderPrices, ...carsPrices];
+    const allPrices = [...autoTraderPrices, ...carsPrices, ...ebayPrices, ...carGurusPrices];
 
     if (allPrices.length === 0) {
       return new Response(JSON.stringify({

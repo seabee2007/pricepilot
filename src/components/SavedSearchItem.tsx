@@ -291,7 +291,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate, vehicleValue }: SavedIte
                     )}
                     
                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                      Data from {vehicleValue.source === 'web_scraping' ? 'Web Scraping' : 'RapidAPI'} • Updated: {vehicleValue.timestamp ? new Date(vehicleValue.timestamp).toLocaleDateString() : 'Unknown'}
+                      Data from {vehicleValue.source === 'web_scraping' ? 'AutoTrader, Cars.com, eBay Motors, CarGurus via Web Scraping' : 'RapidAPI'} • Updated: {vehicleValue.timestamp ? new Date(vehicleValue.timestamp).toLocaleDateString() : 'Unknown'}
                     </div>
                   </div>
                 ) : (

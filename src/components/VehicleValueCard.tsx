@@ -294,7 +294,7 @@ const VehicleValueCard = ({ initialRequest, onValueUpdate }: VehicleValueCardPro
           )}
           
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            <p>Data from {vehicleValue.source === 'web_scraping' ? 'AutoTrader, Cars.com via Web Scraping' : 'RapidAPI Vehicle Pricing'} • Last updated: {new Date(vehicleValue.timestamp).toLocaleString()}</p>
+            <p>Data from {vehicleValue.source === 'web_scraping' ? 'AutoTrader, Cars.com, eBay Motors, CarGurus via Web Scraping' : 'RapidAPI Vehicle Pricing'} • Last updated: {new Date(vehicleValue.timestamp).toLocaleString()}</p>
           </div>
         </div>
       )}
