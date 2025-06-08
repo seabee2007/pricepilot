@@ -127,23 +127,32 @@ export async function searchLiveItems(
           normalizedCategory = rawCategory;
           console.log(`✅ Using numeric category ID: ${normalizedCategory}`);
         } else {
-          // Non-numeric string - try to look up category by name/slug
+          // Non-numeric string - try override map first, then taxonomy search
           console.log(`🔍 Looking up category for slug: "${rawCategory}"`);
-          try {
-            // Ensure categories are loaded
-            const categories = await loadCategories();
-            const matches = searchCategories(rawCategory, categories);
-            
-            if (matches.length > 0) {
-              normalizedCategory = matches[0].categoryId;
-              console.log(`✅ Slug → ID lookup success: "${rawCategory}" → ${normalizedCategory} (${matches[0].categoryName})`);
-            } else {
+          
+          // Step 1: Check override map first
+          const override = getOverrideCategory(rawCategory);
+          if (override) {
+            normalizedCategory = override.categoryId;
+            console.log(`✅ Override → ID lookup success: "${rawCategory}" → ${normalizedCategory} (${override.categoryName})`);
+          } else {
+            // Step 2: Fall back to taxonomy search
+            try {
+              // Ensure categories are loaded
+              const categories = await loadCategories();
+              const matches = searchCategories(rawCategory, categories);
+              
+              if (matches.length > 0) {
+                normalizedCategory = matches[0].categoryId;
+                console.log(`✅ Slug → ID lookup success: "${rawCategory}" → ${normalizedCategory} (${matches[0].categoryName})`);
+              } else {
+                normalizedCategory = 'all';
+                console.log(`⚠️ No category found for slug: "${rawCategory}", using 'all'`);
+              }
+            } catch (error) {
+              console.warn('⚠️ Category lookup failed:', error instanceof Error ? error.message : String(error));
               normalizedCategory = 'all';
-              console.log(`⚠️ No category found for slug: "${rawCategory}", using 'all'`);
             }
-          } catch (error) {
-            console.warn('⚠️ Category lookup failed:', error instanceof Error ? error.message : String(error));
-            normalizedCategory = 'all';
           }
         }
       }
