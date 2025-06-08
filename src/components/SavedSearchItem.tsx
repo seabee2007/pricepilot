@@ -103,8 +103,9 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
       setVehicleValueError(null);
       
       try {
-        // Add a small delay to prevent overwhelming the API
-        await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 500)); // 500-2500ms delay
+        // Add a small delay to prevent overwhelming the API and stagger requests
+        const delay = Math.random() * 1000 + 500; // 500-1500ms delay
+        await new Promise(resolve => setTimeout(resolve, delay));
         
         const value = await getVehicleValue({
           make: vehicleInfo.make,
@@ -136,8 +137,10 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
       }
     };
 
-    fetchVehicleValue();
-  }, [isVehicleItem, vehicleInfo]);
+    // Debounce the fetch to prevent multiple rapid calls
+    const timeoutId = setTimeout(fetchVehicleValue, 100);
+    return () => clearTimeout(timeoutId);
+  }, [isVehicleItem, vehicleInfo?.make, vehicleInfo?.model, vehicleInfo?.year]); // More specific dependencies
 
   const formatCurrency = (value: number, currency: string = 'USD') => {
     return new Intl.NumberFormat('en-US', {

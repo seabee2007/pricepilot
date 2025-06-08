@@ -92,6 +92,10 @@ export interface VehicleHistoryPoint {
   data_points: number;
 }
 
+// Client-side cache to prevent duplicate requests
+const vehicleValueCache = new Map<string, { data: VehicleValueResponse; timestamp: number }>();
+const CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours
+
 // Authentication Functions
 export async function signUp({ email, password, fullName }: SignUpData) {
   const { data, error } = await supabase.auth.signUp({
@@ -605,6 +609,15 @@ export async function getVehicleMarketValue(request: VehicleValueRequest): Promi
   try {
     console.log('🚗 Fetching vehicle market value via scraping for:', request);
 
+    // Check client-side cache first
+    const cacheKey = `${request.make}-${request.model}-${request.year}`.toLowerCase();
+    const cached = vehicleValueCache.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+      console.log('📋 Returning client-side cached vehicle value');
+      return { ...cached.data, cached: true };
+    }
+
     const { data, error } = await supabase.functions.invoke('scrape-vehicle-market-value', {
       body: request
     });
@@ -619,6 +632,13 @@ export async function getVehicleMarketValue(request: VehicleValueRequest): Promi
     }
 
     console.log('✅ Vehicle market value response:', data);
+    
+    // Cache the result client-side
+    vehicleValueCache.set(cacheKey, {
+      data: data as VehicleValueResponse,
+      timestamp: Date.now()
+    });
+
     return data as VehicleValueResponse;
 
   } catch (error) {
@@ -685,7 +705,7 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
 
     // Common car makes (extend this list as needed)
     const makes = [
-      'Audi', 'BMW', 'Mercedes', 'Ford', 'Chevrolet', 'Toyota', 'Honda', 'Nissan',
+      'Audi', 'BMW', 'Mercedes-Benz', 'Mercedes', 'Ford', 'Chevrolet', 'Toyota', 'Honda', 'Nissan',
       'Volkswagen', 'Hyundai', 'Subaru', 'Mazda', 'Volvo', 'Lexus', 'Acura',
       'Infiniti', 'Cadillac', 'Lincoln', 'Jeep', 'Dodge', 'Chrysler', 'Ram',
       'GMC', 'Buick', 'Pontiac', 'Oldsmobile', 'Saturn', 'Saab', 'Jaguar',
@@ -696,9 +716,10 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
     let make: string | undefined;
     let model: string | undefined;
 
-    // Find make in query
-    for (const m of makes) {
-      const regex = new RegExp(`\\b${m}\\b`, 'i');
+    // Find make in query - prioritize longer matches (Mercedes-Benz over Mercedes)
+    const sortedMakes = makes.sort((a, b) => b.length - a.length);
+    for (const m of sortedMakes) {
+      const regex = new RegExp(`\\b${m.replace('-', '\\-')}\\b`, 'i');
       if (regex.test(query)) {
         make = m;
         break;
@@ -733,6 +754,11 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
         .split(' ')
         .slice(0, 3) // Limit to first 3 words for model
         .join(' ');
+      
+      // Special handling for Mercedes-Benz models
+      if (make === 'Mercedes-Benz' && model.startsWith('-Benz')) {
+        model = model.replace('-Benz', '').trim();
+      }
       
       console.log('🔍 Extracted model part:', modelPart, '-> cleaned:', model);
       
