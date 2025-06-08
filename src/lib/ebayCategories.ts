@@ -106,6 +106,12 @@ let refreshTimer: NodeJS.Timeout | null = null;
 // High-priority direct mappings for common search terms
 // First match wins - put highest priority overrides at the top
 const CATEGORY_OVERRIDES: [RegExp, string, string][] = [
+  // Cars & Trucks - HIGH PRIORITY VEHICLE CATEGORY
+  [/\bmotors?\b/i,          '6001', 'Cars & Trucks'],
+  [/\bcars?\s*&?\s*trucks?\b/i, '6001', 'Cars & Trucks'],
+  [/\bvehicles?\b/i,        '6001', 'Cars & Trucks'],
+  [/\bautos?\b/i,           '6001', 'Cars & Trucks'],
+  
   // Electronics - Cell Phones & Smartphones
   [/\biphone\b/i,           '9355', 'Cell Phones & Smartphones'],
   [/\bsamsung\s*galaxy\b/i, '9355', 'Cell Phones & Smartphones'],
