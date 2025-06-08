@@ -602,7 +602,36 @@ Deno.serve(async (req) => {
     
     // Add category filter if specified and not "all"
     if (category && category !== 'all') {
-      const categoryId = getCategoryId(category) || category; // Use direct ID if not found in map
+      let categoryId: string;
+      
+      // If it's already a numeric ID (from frontend taxonomy search), use it directly
+      if (/^\d+$/.test(category)) {
+        categoryId = category;
+        console.log(`Using numeric category ID directly: ${categoryId}`);
+      } else {
+        // Try to map slug to ID, fall back to basic mapping
+        const mappedId = getCategoryId(category);
+        if (mappedId) {
+          categoryId = mappedId;
+          console.log(`Mapped category slug: ${category} -> ${categoryId}`);
+        } else {
+          // Fallback to hardcoded basic mapping for common categories
+          const basicMapping: { [key: string]: string } = {
+            'electronics': '293',  // Consumer Electronics  
+            'fashion': '11450',
+            'home': '11700',
+            'sporting': '888',
+            'toys': '220',
+            'business': '12576',
+            'jewelry': '281',
+            'motors': '6001',
+            'collectibles': '1'
+          };
+          categoryId = basicMapping[category] || category;
+          console.log(`Using fallback mapping: ${category} -> ${categoryId}`);
+        }
+      }
+      
       if (categoryId) {
         searchUrl.searchParams.append('category_ids', categoryId);
         console.log(`Applied category filter: ${category} -> ${categoryId}`);
@@ -677,14 +706,61 @@ Deno.serve(async (req) => {
     console.log('  - Items returned:', data.itemSummaries?.length || 0);
     console.log('  - Warnings:', data.warnings?.length || 0);
     
+    // 🔍 ZERO RESULTS DEBUGGING
+    if (data.total === 0 || !data.itemSummaries || data.itemSummaries.length === 0) {
+      console.log('🔍 [ZERO RESULTS DEBUG] Investigating why no results were returned...');
+      console.log('  - Original query:', query);
+      console.log('  - Enhanced query:', enhancedQuery);
+      console.log('  - Category filter:', category);
+      console.log('  - Category ID used:', searchUrl.searchParams.get('category_ids'));
+      console.log('  - Filter string:', searchUrl.searchParams.get('filter'));
+      console.log('  - Sort parameter:', searchUrl.searchParams.get('sort'));
+      console.log('  - Complete URL:', searchUrl.toString());
+      console.log('  - Response warnings:', data.warnings);
+      console.log('  - Response href:', data.href);
+      
+      // Test without category filter to see if that's the issue
+      console.log('🧪 Testing same query WITHOUT category filter...');
+      const testUrl = new URL(baseUrl);
+      testUrl.searchParams.append('q', query.trim());
+      testUrl.searchParams.append('limit', '5');
+      if (filterString) {
+        testUrl.searchParams.append('filter', filterString);
+      }
+      
+      try {
+        const testResponse = await fetch(testUrl.toString(), {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+            'Accept': 'application/json',
+          },
+        });
+        
+        if (testResponse.ok) {
+          const testData = await testResponse.json();
+          console.log('🧪 Test without category: Found', testData.total || 0, 'items');
+          if (testData.total > 0) {
+            console.log('🔍 ISSUE IDENTIFIED: Category filter is causing zero results');
+            console.log('  - Category being used:', searchUrl.searchParams.get('category_ids'));
+            console.log('  - This category may not contain items matching the query');
+          }
+        } else {
+          console.log('🧪 Test without category also failed:', testResponse.status);
+        }
+      } catch (testError) {
+        console.log('🧪 Test without category error:', testError);
+      }
+    }
+    
     if (data.itemSummaries?.length > 0) {
       console.log('  - First item title:', data.itemSummaries[0]?.title);
       console.log('  - First item price:', data.itemSummaries[0]?.price?.value);
     } else {
       console.log('  - No items found - this could indicate:');
-      console.log('    1. No matching vehicles exist on eBay');
-      console.log('    2. Aspect filter is too restrictive');
-      console.log('    3. Category/aspect format issue');
+      console.log('    1. No matching items exist on eBay');
+      console.log('    2. Category filter is too restrictive');
+      console.log('    3. Query enhancement excludes relevant items');
       
       // If we have year filter and no results, try without year as debugging step
       if (filters.vehicleAspects?.year && (filters.vehicleAspects.make || filters.vehicleAspects.model)) {

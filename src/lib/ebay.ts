@@ -127,38 +127,42 @@ export async function searchLiveItems(
           normalizedCategory = rawCategory;
           console.log(`✅ Using numeric category ID: ${normalizedCategory}`);
         } else {
-          // Non-numeric string - this is a manually selected category from dropdown
+          // For manually selected categories, use direct mapping first
           console.log(`🔍 Looking up category for manually selected slug: "${rawCategory}"`);
           
-          // For manually selected categories, DON'T use override map - use direct mapping
-          try {
-            // Ensure categories are loaded
-            const categories = await loadCategories();
-            const matches = searchCategories(rawCategory, categories);
-            
-            if (matches.length > 0) {
-              normalizedCategory = matches[0].categoryId;
-              console.log(`✅ Manual category lookup: "${rawCategory}" → ${normalizedCategory} (${matches[0].categoryName})`);
-            } else {
-              // Fallback to basic category mapping for common slugs
-              const basicCategoryMap: { [key: string]: string } = {
-                'electronics': '293',
-                'fashion': '11450', 
-                'home': '11700',
-                'sporting': '888',
-                'toys': '220',
-                'business': '12576',
-                'jewelry': '281',
-                'motors': '6001',
-                'collectibles': '1'
-              };
+          // Use direct mapping for common categories to avoid taxonomy search complexity
+          const directCategoryMap: { [key: string]: string } = {
+            'electronics': '293',      // Consumer Electronics
+            'fashion': '11450',        // Fashion
+            'home': '11700',          // Home & Garden  
+            'sporting': '888',        // Sporting Goods
+            'toys': '220',            // Toys & Hobbies
+            'business': '12576',      // Business & Industrial
+            'jewelry': '281',         // Jewelry & Watches
+            'motors': '6001',         // Cars & Trucks
+            'collectibles': '1'       // Collectibles
+          };
+          
+          if (directCategoryMap[rawCategory]) {
+            normalizedCategory = directCategoryMap[rawCategory];
+            console.log(`✅ Direct category mapping: "${rawCategory}" → ${normalizedCategory}`);
+          } else {
+            // Fallback to taxonomy search for other categories
+            try {
+              const categories = await loadCategories();
+              const matches = searchCategories(rawCategory, categories);
               
-              normalizedCategory = basicCategoryMap[rawCategory] || 'all';
-              console.log(`✅ Basic category mapping: "${rawCategory}" → ${normalizedCategory}`);
+              if (matches.length > 0) {
+                normalizedCategory = matches[0].categoryId;
+                console.log(`✅ Taxonomy fallback lookup: "${rawCategory}" → ${normalizedCategory} (${matches[0].categoryName})`);
+              } else {
+                normalizedCategory = 'all';
+                console.log(`⚠️ No category found for: "${rawCategory}", using 'all'`);
+              }
+            } catch (error) {
+              console.warn('⚠️ Category lookup failed:', error instanceof Error ? error.message : String(error));
+              normalizedCategory = 'all';
             }
-          } catch (error) {
-            console.warn('⚠️ Category lookup failed:', error instanceof Error ? error.message : String(error));
-            normalizedCategory = 'all';
           }
         }
       }
@@ -275,6 +279,16 @@ export async function searchLiveItems(
 
       const data = await response.json();
       console.log('✅ eBay API Response received:', data);
+      
+      // 🔍 ENHANCED FRONTEND DEBUGGING
+      console.log('🔍 [FRONTEND DEBUG] Full response analysis:');
+      console.log('  - Response keys:', Object.keys(data));
+      console.log('  - Items array:', data.items);
+      console.log('  - Items length:', data.items?.length || 0);
+      console.log('  - Total from backend:', data.total);
+      console.log('  - Warnings from backend:', data.warnings);
+      console.log('  - HREF from backend:', data.href);
+      
       return data.items || [];
     } catch (error) {
       console.error('💥 Error in searchLiveItems:', error);
