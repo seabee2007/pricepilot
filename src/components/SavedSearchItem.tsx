@@ -69,7 +69,7 @@ const SavedItemCard = ({ savedItem, onDelete }: SavedItemCardProps) => {
                 <img 
                   src={savedItem.image_url} 
                   alt={savedItem.title}
-                  className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
+                  className="w-[90px] h-[90px] sm:w-[106px] sm:h-[106px] md:w-[120px] md:h-[120px] lg:w-[140px] lg:h-[140px] object-cover rounded-lg flex-shrink-0"
                 />
               )}
               <div className="flex-1 min-w-0">
