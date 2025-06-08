@@ -127,32 +127,38 @@ export async function searchLiveItems(
           normalizedCategory = rawCategory;
           console.log(`✅ Using numeric category ID: ${normalizedCategory}`);
         } else {
-          // Non-numeric string - try override map first, then taxonomy search
-          console.log(`🔍 Looking up category for slug: "${rawCategory}"`);
+          // Non-numeric string - this is a manually selected category from dropdown
+          console.log(`🔍 Looking up category for manually selected slug: "${rawCategory}"`);
           
-          // Step 1: Check override map first
-          const override = getOverrideCategory(rawCategory);
-          if (override) {
-            normalizedCategory = override.categoryId;
-            console.log(`✅ Override → ID lookup success: "${rawCategory}" → ${normalizedCategory} (${override.categoryName})`);
-          } else {
-            // Step 2: Fall back to taxonomy search
-            try {
-              // Ensure categories are loaded
-              const categories = await loadCategories();
-              const matches = searchCategories(rawCategory, categories);
+          // For manually selected categories, DON'T use override map - use direct mapping
+          try {
+            // Ensure categories are loaded
+            const categories = await loadCategories();
+            const matches = searchCategories(rawCategory, categories);
+            
+            if (matches.length > 0) {
+              normalizedCategory = matches[0].categoryId;
+              console.log(`✅ Manual category lookup: "${rawCategory}" → ${normalizedCategory} (${matches[0].categoryName})`);
+            } else {
+              // Fallback to basic category mapping for common slugs
+              const basicCategoryMap: { [key: string]: string } = {
+                'electronics': '293',
+                'fashion': '11450', 
+                'home': '11700',
+                'sporting': '888',
+                'toys': '220',
+                'business': '12576',
+                'jewelry': '281',
+                'motors': '6001',
+                'collectibles': '1'
+              };
               
-              if (matches.length > 0) {
-                normalizedCategory = matches[0].categoryId;
-                console.log(`✅ Slug → ID lookup success: "${rawCategory}" → ${normalizedCategory} (${matches[0].categoryName})`);
-              } else {
-                normalizedCategory = 'all';
-                console.log(`⚠️ No category found for slug: "${rawCategory}", using 'all'`);
-              }
-            } catch (error) {
-              console.warn('⚠️ Category lookup failed:', error instanceof Error ? error.message : String(error));
-              normalizedCategory = 'all';
+              normalizedCategory = basicCategoryMap[rawCategory] || 'all';
+              console.log(`✅ Basic category mapping: "${rawCategory}" → ${normalizedCategory}`);
             }
+          } catch (error) {
+            console.warn('⚠️ Category lookup failed:', error instanceof Error ? error.message : String(error));
+            normalizedCategory = 'all';
           }
         }
       }
@@ -162,27 +168,35 @@ export async function searchLiveItems(
                            query.toLowerCase().includes('truck') || 
                            query.toLowerCase().includes('motorcycle');
 
-      // Only skip auto-detection if we have a valid numeric category ID (not 'all')
-      const shouldSkipAutoDetection = /^\d+$/.test(normalizedCategory) && normalizedCategory !== 'all';
+      // Only run auto-detection if category is still 'all' (no manual selection)
+      const shouldRunAutoDetection = normalizedCategory === 'all' && !isVehicleQuery;
       
-      if (!shouldSkipAutoDetection && !isVehicleQuery && normalizedCategory === 'all') {
+      if (shouldRunAutoDetection) {
         try {
-          console.log('🎯 Running automatic category detection...');
+          console.log('🎯 Running automatic category detection for "all" category...');
           // Ensure categories are loaded before detection
           await loadCategories();
-          const detectedCategoryId = pickCategory(query);
           
-          if (detectedCategoryId) {
-            normalizedCategory = detectedCategoryId;
-            console.log(`✅ Auto-detected category ${detectedCategoryId} for query: "${query}"`);
+          // For auto-detection, we CAN use override map since user didn't manually select a category
+          const override = getOverrideCategory(query);
+          if (override) {
+            normalizedCategory = override.categoryId;
+            console.log(`✅ Override category auto-detected: "${query}" → ${normalizedCategory} (${override.categoryName})`);
           } else {
-            console.log('ℹ️ No category auto-detected, using broader search');
+            // Fall back to taxonomy-based detection
+            const detectedCategoryId = pickCategory(query);
+            if (detectedCategoryId) {
+              normalizedCategory = detectedCategoryId;
+              console.log(`✅ Taxonomy-based category auto-detected: ${detectedCategoryId} for query: "${query}"`);
+            } else {
+              console.log('ℹ️ No category auto-detected, using broader search');
+            }
           }
         } catch (error) {
           console.warn('⚠️ Category auto-detection failed:', error instanceof Error ? error.message : String(error));
           // Continue with normalizedCategory = 'all'
         }
-      } else if (shouldSkipAutoDetection) {
+      } else if (normalizedCategory !== 'all') {
         console.log(`🏷️ Using manually specified category: ${normalizedCategory} (skipping auto-detection)`);
       } else if (isVehicleQuery) {
         console.log('🚗 Vehicle query detected, skipping category detection');

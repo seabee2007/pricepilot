@@ -492,20 +492,12 @@ Deno.serve(async (req) => {
     }
 
     // For vehicle searches, validate that we have proper vehicle aspects
-    if (category === 'motors' && (!make || !model)) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Vehicle searches require make and model', 
-          details: 'Please select a make and model for vehicle searches' 
-        }),
-        { 
-          status: 400, 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
+    const isVehicleSearch = category === 'motors' || (getCategoryId(category) === '6001');
+    
+    if (isVehicleSearch && (!make || !model)) {
+      console.log('⚠️ Vehicle search detected but missing required make/model:', { make, model, year });
+      // For vehicle searches without make/model, we'll proceed but log a warning
+      // This allows for broader vehicle searches like "Ford truck" without strict validation
     }
 
     const url = new URL(req.url);
@@ -546,7 +538,8 @@ Deno.serve(async (req) => {
       priceRange,
       returnsAccepted,
       postalCode,
-      vehicleAspects: vehicleData
+      // Only include vehicle aspects for actual vehicle searches
+      vehicleAspects: isVehicleSearch ? vehicleData : undefined
     };
 
     const filterString = buildFilterString(searchFilters, mode);
@@ -563,21 +556,30 @@ Deno.serve(async (req) => {
       }
     }
     
-    // 1. Log the raw vehicleData just before building the filter
-    console.log('🔍 [DEBUG] vehicleData coming in:', vehicleData);
-    
-    const vehicleFilter = buildVehicleFilter(vehicleData, conditionIds);
-    
-    // 2. Log the output of buildVehicleFilter immediately
-    console.log('🔍 [DEBUG] vehicleFilter string:', vehicleFilter);
+    // Build vehicle filter only for vehicle searches
+    let vehicleFilter = '';
+    if (isVehicleSearch && vehicleData && (vehicleData.make || vehicleData.model || vehicleData.year)) {
+      console.log('🔍 [DEBUG] Building vehicle filter for vehicle search');
+      vehicleFilter = buildVehicleFilter(vehicleData, conditionIds);
+      console.log('🔍 [DEBUG] vehicleFilter string:', vehicleFilter);
+    } else {
+      console.log('🔍 [DEBUG] Skipping vehicle filter - not a vehicle search or no vehicle data');
+    }
     
     // Debug logging for vehicle search
-    console.log('🔍 Vehicle search debug info:');
-    console.log('  - Original query:', query);
-    console.log('  - Vehicle aspects:', JSON.stringify(vehicleData, null, 2));
-    console.log('  - Generated vehicle filter:', vehicleFilter);
-    console.log('  - Other filters:', filterString);
-    console.log('  - Compatibility filter:', compatibilityFilter);
+    if (isVehicleSearch) {
+      console.log('🚗 Vehicle search debug info:');
+      console.log('  - Original query:', query);
+      console.log('  - Vehicle aspects:', JSON.stringify(vehicleData, null, 2));
+      console.log('  - Generated vehicle filter:', vehicleFilter);
+      console.log('  - Other filters:', filterString);
+      console.log('  - Compatibility filter:', compatibilityFilter);
+    } else {
+      console.log('🔍 Regular search debug info:');
+      console.log('  - Query:', query);
+      console.log('  - Category:', category);
+      console.log('  - Filters:', filterString);
+    }
     
     // Choose endpoint based on mode and environment (sandbox vs production)
     const isSandbox = (Deno.env.get('EBAY_CLIENT_ID') || '').includes('SBX');
@@ -598,11 +600,13 @@ Deno.serve(async (req) => {
     // Use the sort parameter from frontend request (defaults to bestMatch)
     searchUrl.searchParams.append('sort', sort);
     
-    // Add category filter if specified and not "all" - ALWAYS add for motors
-    if (category === 'motors' || (category && category !== 'all')) {
-      const categoryId = getCategoryId(category) || category || '6001'; // Use direct ID if not found in map, default to Cars & Trucks
-      searchUrl.searchParams.append('category_ids', categoryId);
-      console.log(`Applied category filter: ${category} -> ${categoryId}`);
+    // Add category filter if specified and not "all"
+    if (category && category !== 'all') {
+      const categoryId = getCategoryId(category) || category; // Use direct ID if not found in map
+      if (categoryId) {
+        searchUrl.searchParams.append('category_ids', categoryId);
+        console.log(`Applied category filter: ${category} -> ${categoryId}`);
+      }
     }
     
     // 1) Static filters go in "filter" parameter
@@ -611,8 +615,8 @@ Deno.serve(async (req) => {
       console.log(`Applied filter: ${filterString}`);
     }
 
-    // 2) Vehicle aspects (Make/Model/Year) go in "aspect_filter" parameter
-    if (vehicleFilter) {
+    // 2) Vehicle aspects (Make/Model/Year) go in "aspect_filter" parameter - ONLY for vehicle searches
+    if (isVehicleSearch && vehicleFilter) {
       const aspectFilter = `categoryId:6001,${vehicleFilter}`;
       searchUrl.searchParams.append('aspect_filter', aspectFilter);
       console.log(`Applied aspect_filter: ${aspectFilter}`);

@@ -19,10 +19,18 @@ const HomePage = () => {
   }, [searchParams]);
 
   const handleCategoryChange = (category: string) => {
-    setShowVehicleSearch(category === 'motors');
+    console.log('🚗 Category changed to:', category);
+    const isMotors = category === 'motors';
+    setShowVehicleSearch(isMotors);
+    
+    // If switching away from motors, clear the URL parameter
+    if (!isMotors && searchParams.get('category') === 'motors') {
+      window.history.replaceState({}, '', '/');
+    }
   };
 
   const handleBackToGeneral = () => {
+    console.log('🚗 Switching back to general search');
     setShowVehicleSearch(false);
     // Clear the category parameter from URL when going back to general search
     window.history.replaceState({}, '', '/');
