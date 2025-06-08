@@ -641,6 +641,14 @@ Deno.serve(async (req) => {
     }
 
     console.log('eBay API Request URL:', searchUrl.toString());
+    
+    // 🔍 DETAILED DEBUGGING: Check actual sort parameter
+    console.log('🔍 [DEBUG] Sort parameter received from frontend:', sort);
+    console.log('🔍 [DEBUG] Sort parameter in URL:', searchUrl.searchParams.get('sort'));
+    console.log('🔍 [DEBUG] All URL parameters:');
+    for (const [key, value] of searchUrl.searchParams) {
+      console.log(`  ${key}: ${value}`);
+    }
 
     const response = await fetch(searchUrl.toString(), {
       headers: {
