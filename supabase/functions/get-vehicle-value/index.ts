@@ -122,11 +122,28 @@ serve(async (req) => {
     if (!resp.ok) {
       const err = await resp.text();
       console.error("❌ RapidAPI error:", resp.status, err);
+      
+      let errorMessage = `API error: ${err}`;
+      let statusCode = resp.status;
+      
+      // Handle specific error cases
+      if (resp.status === 429) {
+        errorMessage = "Rate limit exceeded. The vehicle pricing API has reached its request limit. Please try again in a few minutes.";
+        console.warn("⚠️ Rate limit hit for vehicle pricing API");
+      } else if (resp.status === 401) {
+        errorMessage = "API authentication failed. Please check API key configuration.";
+      } else if (resp.status === 403) {
+        errorMessage = "API access forbidden. Please check API subscription status.";
+      } else if (resp.status >= 500) {
+        errorMessage = "Vehicle pricing service is temporarily unavailable. Please try again later.";
+      }
+      
       return new Response(JSON.stringify({ 
-        error: `API error: ${err}`,
-        success: false 
+        error: errorMessage,
+        success: false,
+        status: statusCode
       }), {
-        status: resp.status,
+        status: statusCode,
         headers: { 
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*"

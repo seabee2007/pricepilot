@@ -103,6 +103,9 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
       setVehicleValueError(null);
       
       try {
+        // Add a small delay to prevent overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 500)); // 500-2500ms delay
+        
         const value = await getVehicleValue({
           make: vehicleInfo.make,
           model: vehicleInfo.model,
@@ -114,7 +117,20 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
         setVehicleValue(value);
       } catch (error) {
         console.error('Error fetching vehicle value:', error);
-        setVehicleValueError(error instanceof Error ? error.message : 'Failed to get vehicle value');
+        
+        // Handle specific error types
+        let errorMessage = 'Failed to get vehicle value';
+        if (error instanceof Error) {
+          if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+            errorMessage = 'Rate limit reached. Please try again in a few minutes.';
+          } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            errorMessage = 'Network error. Please check your connection.';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+        
+        setVehicleValueError(errorMessage);
       } finally {
         setLoadingVehicleValue(false);
       }
