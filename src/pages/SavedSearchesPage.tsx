@@ -54,6 +54,14 @@ const SavedItemsPage = () => {
     }
   };
 
+  const handleUpdate = (id: string, updates: Partial<SavedItem>) => {
+    setSavedItems(prevItems => 
+      prevItems.map(item => 
+        item.id === id ? { ...item, ...updates } : item
+      )
+    );
+  };
+
   const handleTriggerAlerts = async () => {
     try {
       setAlertLoading(true);
@@ -163,6 +171,7 @@ const SavedItemsPage = () => {
               key={savedItem.id}
               savedItem={savedItem}
               onDelete={handleDelete}
+              onUpdate={handleUpdate}
             />
           ))}
         </div>

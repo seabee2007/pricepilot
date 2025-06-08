@@ -1,19 +1,69 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SavedItem, SavedItemIndividual } from '../types';
-import { ExternalLink, Trash2, Package } from 'lucide-react';
+import { ExternalLink, Trash2, Package, Edit, Check, X, Bell } from 'lucide-react';
 import Button from './ui/Button';
+import { updateSavedItem } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import PriceHistoryChart from './PriceHistoryChart';
 
 interface SavedItemCardProps {
   savedItem: SavedItem;
   onDelete: (id: string) => void;
+  onUpdate?: (id: string, updates: Partial<SavedItem>) => void;
 }
 
-const SavedItemCard = ({ savedItem, onDelete }: SavedItemCardProps) => {
+const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) => {
+  const [isEditingAlert, setIsEditingAlert] = useState(false);
+  const [alertValue, setAlertValue] = useState(savedItem.price_alert_threshold?.toString() || '');
+  const [isUpdating, setIsUpdating] = useState(false);
+
   const handleDelete = () => {
     onDelete(savedItem.id);
     toast.success('Saved item deleted successfully');
+  };
+
+  const handleEditAlert = () => {
+    setAlertValue(savedItem.price_alert_threshold?.toString() || '');
+    setIsEditingAlert(true);
+  };
+
+  const handleCancelEdit = () => {
+    setAlertValue(savedItem.price_alert_threshold?.toString() || '');
+    setIsEditingAlert(false);
+  };
+
+  const handleSaveAlert = async () => {
+    const numericValue = parseFloat(alertValue);
+    
+    // Validation
+    if (alertValue && (isNaN(numericValue) || numericValue <= 0)) {
+      toast.error('Please enter a valid price amount');
+      return;
+    }
+
+    setIsUpdating(true);
+    
+    try {
+      const updates = {
+        price_alert_threshold: alertValue ? numericValue : undefined
+      };
+      
+      await updateSavedItem(savedItem.id, updates);
+      
+      // Update local state if onUpdate callback is provided
+      if (onUpdate) {
+        onUpdate(savedItem.id, updates);
+      }
+      
+      setIsEditingAlert(false);
+      toast.success(alertValue ? 'Price alert updated!' : 'Price alert removed');
+      
+    } catch (error) {
+      console.error('Error updating price alert:', error);
+      toast.error('Failed to update price alert');
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   // Type guard for individual items
@@ -70,29 +120,85 @@ const SavedItemCard = ({ savedItem, onDelete }: SavedItemCardProps) => {
         </div>
       </div>
 
-      {/* Price Alert Info */}
-      {savedItem.price_alert_threshold && (
-        <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                Price Alert: ${savedItem.price_alert_threshold.toFixed(2)}
-              </p>
-              <p className="text-xs text-blue-600 dark:text-blue-400">
-                You'll be notified when the price drops below this threshold
-              </p>
+      {/* Price Alert Section */}
+      <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Bell className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+              <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Price Alert</span>
             </div>
-            {savedItem.last_checked_price && (
-              <div className="text-right">
-                <p className="text-xs text-blue-600 dark:text-blue-400">Last checked</p>
-                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                  ${savedItem.last_checked_price.toFixed(2)}
-                </p>
+            
+            {isEditingAlert ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-blue-600 dark:text-blue-400">$</span>
+                <input
+                  type="number"
+                  value={alertValue}
+                  onChange={(e) => setAlertValue(e.target.value)}
+                  placeholder="Enter alert price"
+                  min="0"
+                  step="0.01"
+                  className="flex-1 px-2 py-1 text-sm border border-blue-300 dark:border-blue-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSaveAlert}
+                    disabled={isUpdating}
+                    className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 p-1"
+                    icon={<Check className="h-4 w-4" />}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelEdit}
+                    disabled={isUpdating}
+                    className="text-gray-500 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/20 p-1"
+                    icon={<X className="h-4 w-4" />}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  {savedItem.price_alert_threshold ? (
+                    <>
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                        Alert when below: ${savedItem.price_alert_threshold.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-blue-600 dark:text-blue-400">
+                        You'll be notified when the price drops below this threshold
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-blue-600 dark:text-blue-400">
+                      No price alert set. Click to add one.
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleEditAlert}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                  icon={<Edit className="h-4 w-4" />}
+                />
               </div>
             )}
           </div>
+          
+          {savedItem.last_checked_price && !isEditingAlert && (
+            <div className="text-right ml-4">
+              <p className="text-xs text-blue-600 dark:text-blue-400">Last checked</p>
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                ${savedItem.last_checked_price.toFixed(2)}
+              </p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Price History Chart */}
       {savedItem.item_id && (
