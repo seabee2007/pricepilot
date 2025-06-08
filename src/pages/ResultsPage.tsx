@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { SearchMode, SearchFilters, PriceHistory, ItemSummary } from '../types';
-import { savePriceHistory, getPriceHistory } from '../lib/supabase';
+import { savePriceHistory, getPriceHistory, parseVehicleFromQuery } from '../lib/supabase';
 import { searchLiveItems, searchCompletedItems, calculateAveragePrice } from '../lib/ebay';
 import { AlertCircle, ArrowLeft } from 'lucide-react';
 import ResultsList from '../components/ResultsList';
 import PriceHistoryChart from '../components/PriceHistoryChart';
+import VehicleValueCard from '../components/VehicleValueCard';
 import AuthPrompt from '../components/AuthPrompt';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -85,24 +86,24 @@ const ResultsPage = () => {
           
           // For sell mode, also fetch enhanced price history
           try {
-            const enhancedHistory = await getPriceHistory(undefined, query);
+            const enhancedHistory = await getPriceHistory(query);
             if (enhancedHistory && enhancedHistory.length > 0) {
               // Convert to legacy format for compatibility
               const legacyHistory = enhancedHistory.map(point => ({
-                id: `${query}-${point.day}`,
+                id: `${query}-${point.timestamp}`,
                 query,
-                timestamp: point.day,
+                timestamp: point.timestamp,
                 avg_price: point.avg_price
               }));
               setPriceHistory(legacyHistory);
             } else {
               // Fallback to legacy price history
-              const history = await getPriceHistory(undefined, query);
+              const history = await getPriceHistory(query);
               setPriceHistory(history);
             }
           } catch (historyError) {
             console.error('Error fetching enhanced price history, falling back to legacy:', historyError);
-            const history = await getPriceHistory(undefined, query);
+            const history = await getPriceHistory(query);
             setPriceHistory(history);
           }
           
@@ -121,12 +122,12 @@ const ResultsPage = () => {
               
               // Refresh price history after adding new point
               try {
-                const updatedHistory = await getPriceHistory(undefined, query);
+                const updatedHistory = await getPriceHistory(query);
                 if (updatedHistory && updatedHistory.length > 0) {
                   const legacyHistory = updatedHistory.map(point => ({
-                    id: `${query}-${point.day}`,
+                    id: `${query}-${point.timestamp}`,
                     query,
-                    timestamp: point.day,
+                    timestamp: point.timestamp,
                     avg_price: point.avg_price
                   }));
                   setPriceHistory(legacyHistory);
@@ -244,6 +245,14 @@ const ResultsPage = () => {
                          filters.vehicleAspects ||
                          query.toLowerCase().match(/\b(car|truck|vehicle|auto|ford|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|jeep|ram|gmc|cadillac|buick|lincoln|acura|lexus|infiniti|mazda|subaru|mitsubishi|hyundai|kia|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls|jaguar|land rover|mini|fiat|alfa romeo|chrysler|tesla|mustang|camaro|corvette|challenger|charger|viper|wrangler|silverado|f-150|tacoma|tundra|accord|civic|camry|prius|altima|sentra|pathfinder|pilot|cr-v|rav4|highlander|4runner|escalade|tahoe|suburban|yukon|explorer|escape|focus|fusion|edge|bronco)\b/);
 
+  // Parse vehicle information from query for vehicle value lookup
+  const vehicleInfo = useMemo(() => {
+    if (isVehicleSearch) {
+      return parseVehicleFromQuery(query);
+    }
+    return null;
+  }, [query, isVehicleSearch]);
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
       {/* Testing Mode Banner */}
@@ -316,6 +325,18 @@ VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
         )
       ) : (
         <>
+          {/* Vehicle Value Card for vehicle searches */}
+          {isVehicleSearch && vehicleInfo && (
+            <div className="mb-8">
+              <VehicleValueCard 
+                initialRequest={vehicleInfo}
+                onValueUpdate={(value) => {
+                  console.log('Vehicle value updated:', value);
+                }}
+              />
+            </div>
+          )}
+          
           <ResultsList 
             items={items} 
             mode={mode} 

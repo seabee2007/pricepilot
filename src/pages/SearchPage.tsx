@@ -1,0 +1,11 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Search, MapPin, Filter, X, Calendar, TrendingUp } from 'lucide-react';
+import { ItemSummary, SearchFilters } from '../types';
+import { searchLiveItems } from '../lib/ebay';
+import { savePriceHistory, parseVehicleFromQuery } from '../lib/supabase';
+import Button from '../components/ui/Button';
+import ResultsList from '../components/ResultsList';
+import PriceHistoryChart from '../components/PriceHistoryChart';
+import VehicleValueCard from '../components/VehicleValueCard';
+import toast from 'react-hot-toast'; 

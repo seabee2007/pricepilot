@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { SavedSearch, SavedItem, PriceHistory, SearchFilters, ItemSummary } from '../types';
+import { SavedItem, PriceHistory, SearchFilters, ItemSummary } from '../types';
 import { SubscriptionData } from './stripe';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -58,6 +58,34 @@ export interface DailyPricePoint {
   low_price: number;
   high_price: number;
   avg_price: number;
+  data_points: number;
+}
+
+// Vehicle value interfaces
+export interface VehicleValueRequest {
+  make: string;
+  model: string;
+  year: number;
+  mileage?: number;
+  trim?: string;
+  zipCode?: string;
+}
+
+export interface VehicleValueResponse {
+  value: number;
+  currency: string;
+  make: string;
+  model: string;
+  year: number;
+  source: string;
+  timestamp: string;
+  cached?: boolean;
+  success: boolean;
+}
+
+export interface VehicleHistoryPoint {
+  day: string;
+  avg_value: number;
   data_points: number;
 }
 
@@ -566,5 +594,114 @@ export async function sendTestEmail(): Promise<{ success: boolean; message: stri
       success: false, 
       message: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}` 
     };
+  }
+}
+
+// Vehicle Value Functions
+export async function getVehicleValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
+  try {
+    console.log('🚗 Fetching vehicle value for:', request);
+
+    const { data, error } = await supabase.functions.invoke('get-vehicle-value', {
+      body: request
+    });
+
+    if (error) {
+      console.error('❌ Vehicle value error:', error);
+      throw new Error(error.message || 'Failed to get vehicle value');
+    }
+
+    if (!data.success) {
+      throw new Error(data.error || 'Vehicle value lookup failed');
+    }
+
+    console.log('✅ Vehicle value response:', data);
+    return data as VehicleValueResponse;
+
+  } catch (error) {
+    console.error('💥 Error getting vehicle value:', error);
+    throw error;
+  }
+}
+
+export async function getVehicleHistory(make: string, model: string, year: number, days: number = 30): Promise<VehicleHistoryPoint[]> {
+  try {
+    console.log(`📊 Fetching vehicle history for ${year} ${make} ${model} (${days} days)`);
+
+    const { data, error } = await supabase.rpc('get_vehicle_value_history', {
+      p_make: make,
+      p_model: model,
+      p_year: year,
+      p_days: days
+    });
+
+    if (error) {
+      console.error('❌ Vehicle history error:', error);
+      throw error;
+    }
+
+    console.log('✅ Vehicle history response:', data);
+    
+    return (data || []).map((item: any) => ({
+      day: item.day,
+      avg_value: parseFloat(item.avg_value) || 0,
+      data_points: parseInt(item.data_points) || 0
+    }));
+
+  } catch (error) {
+    console.error('💥 Error getting vehicle history:', error);
+    throw error;
+  }
+}
+
+// Helper function to extract vehicle info from search query
+export function parseVehicleFromQuery(query: string): Partial<VehicleValueRequest> | null {
+  try {
+    // Basic regex patterns to extract make, model, year
+    const yearMatch = query.match(/\b(19|20)\d{2}\b/);
+    const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
+
+    // Common car makes (extend this list as needed)
+    const makes = [
+      'Audi', 'BMW', 'Mercedes', 'Ford', 'Chevrolet', 'Toyota', 'Honda', 'Nissan',
+      'Volkswagen', 'Hyundai', 'Subaru', 'Mazda', 'Volvo', 'Lexus', 'Acura',
+      'Infiniti', 'Cadillac', 'Lincoln', 'Jeep', 'Dodge', 'Chrysler', 'Ram',
+      'GMC', 'Buick', 'Pontiac', 'Oldsmobile', 'Saturn', 'Saab', 'Jaguar',
+      'Land Rover', 'Range Rover', 'Porsche', 'Ferrari', 'Lamborghini', 'Bentley',
+      'Rolls Royce', 'Aston Martin', 'McLaren', 'Lotus', 'Maserati', 'Alfa Romeo'
+    ];
+
+    let make: string | undefined;
+    let model: string | undefined;
+
+    // Find make in query
+    for (const m of makes) {
+      const regex = new RegExp(`\\b${m}\\b`, 'i');
+      if (regex.test(query)) {
+        make = m;
+        break;
+      }
+    }
+
+    if (make && year) {
+      // Try to extract model (everything after make, before year, excluding common words)
+      const makeIndex = query.toLowerCase().indexOf(make.toLowerCase());
+      const yearIndex = query.indexOf(year.toString());
+      
+      if (makeIndex < yearIndex) {
+        const modelPart = query.substring(makeIndex + make.length, yearIndex).trim();
+        // Clean up model name
+        model = modelPart.replace(/\b(for sale|used|new|car|auto|vehicle)\b/gi, '').trim();
+        
+        if (model && model.length > 0) {
+          return { make, model, year };
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error parsing vehicle from query:', error);
+    return null;
   }
 }
