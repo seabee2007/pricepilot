@@ -57,3 +57,45 @@ The app now gracefully handles:
 ## Setup Instructions
 
 ### Getting eBay API Credentials
+
+# PricePilot
+
+A powerful eBay price tracking and comparison tool built with React, TypeScript, and Supabase.
+
+## Features
+
+- **eBay Search Integration**: Search live eBay listings with advanced filtering
+- **Smart Category Detection**: Automatic eBay category detection for improved search relevance
+- **Price Tracking**: Save items and track price changes over time  
+- **Compatibility Checking**: Vehicle parts compatibility verification
+- **Deal Discovery**: Find eBay deals and promotional events
+- **Authentication**: Secure user accounts with Supabase Auth
+- **Real-time Data**: Live pricing and inventory information
+
+## Smart Category Detection System
+
+PricePilot now includes intelligent category detection that automatically identifies the best eBay category for your search queries, dramatically improving search result relevance.
+
+### How It Works
+
+1. **Automatic Detection**: When you search for items like "iPhone 15", the system automatically detects this should search in "Cell Phones & Accessories"
+2. **Keyword Matching**: Uses advanced keyword matching with synonyms (e.g., "phone" matches "mobile", "smartphone", "cellular")
+3. **Relevance Scoring**: Prioritizes more specific categories and exact keyword matches
+4. **Smart Exclusions**: Automatically skips category detection for vehicle searches to preserve existing automotive logic
+5. **Graceful Fallback**: If category detection fails, searches continue without categories
+
+### Benefits
+
+- **Better Results**: No more seeing screen protectors when searching for phones
+- **Improved Relevance**: eBay's algorithm works better with proper categories
+- **Automatic**: No manual category selection required
+- **Fast**: 24-hour caching ensures quick response times
+
+### Technical Implementation
+
+- **eBay Taxonomy API**: Fetches complete category tree with 24-hour caching
+- **Edge Functions**: Server-side processing via Supabase for security
+- **TypeScript**: Full type safety and developer experience
+- **Error Handling**: Robust fallback mechanisms
+
+## Setup

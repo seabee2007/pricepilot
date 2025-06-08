@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { useEffect } from 'react';
 import Layout from './components/Layout';
 import HomePage from './pages/HomePage';
 import ResultsPage from './pages/ResultsPage';
@@ -12,8 +13,25 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorBoundary from './components/ui/ErrorBoundary';
+import { loadCategories } from './lib/ebayCategories';
 
 function App() {
+  // Initialize category system when app starts
+  useEffect(() => {
+    const initCategories = async () => {
+      try {
+        console.log('🚀 Initializing eBay category system...');
+        await loadCategories();
+        console.log('✅ Category system ready');
+      } catch (error) {
+        console.warn('⚠️ Category system initialization failed:', error);
+        // Non-blocking - app continues to work without categories
+      }
+    };
+
+    initCategories();
+  }, []);
+
   return (
     <ErrorBoundary>
       <Router>

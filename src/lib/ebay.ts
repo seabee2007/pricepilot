@@ -1,6 +1,7 @@
 import { ItemSummary, SearchFilters, VehicleCompatibility, ItemCompatibility, DealItem, EbayEvent, EventItem, DealSearchFilters, EventSearchFilters } from '../types';
 import { supabase } from './supabase';
 import { config } from './config';
+import { pickCategory, loadCategories } from './ebayCategories';
 
 // Rate limiting and request deduplication
 const requestCache = new Map<string, Promise<any>>();
@@ -114,12 +115,38 @@ export async function searchLiveItems(
       
       console.log('✅ Session found, authenticated user:', session.user.id);
 
+      // Auto-detect category if not manually specified and not a vehicle search
+      let enhancedFilters = { ...filters };
+      const isVehicleQuery = query.toLowerCase().includes('car') || 
+                           query.toLowerCase().includes('truck') || 
+                           query.toLowerCase().includes('motorcycle') ||
+                           filters.category?.includes('6001') || 
+                           filters.category?.includes('6028');
+
+      if (!filters.category && !isVehicleQuery) {
+        try {
+          console.log('🎯 Attempting automatic category detection...');
+          const detectedCategoryId = pickCategory(query);
+          if (detectedCategoryId) {
+            enhancedFilters.category = detectedCategoryId;
+            console.log(`✅ Auto-detected category ${detectedCategoryId} for query: "${query}"`);
+          } else {
+            console.log('ℹ️ No category detected, using broader search');
+          }
+        } catch (error) {
+          console.warn('⚠️ Category detection failed:', error);
+          // Continue without category - graceful fallback
+        }
+      } else if (filters.category) {
+        console.log('🏷️ Using manually specified category:', filters.category);
+      } else {
+        console.log('🚗 Vehicle query detected, skipping category detection');
+      }
+
       // Ensure we include both auction and fixed price items by default for broader results
-      const enhancedFilters = {
-        ...filters,
-        // Don't override if user explicitly set buyItNowOnly or auctionOnly
-        ...((!filters.buyItNowOnly && !filters.auctionOnly) ? {} : {})
-      };
+      if (!enhancedFilters.buyItNowOnly && !enhancedFilters.auctionOnly) {
+        // Default to both types for better results
+      }
 
       const functionUrl = `${supabaseUrl}/functions/v1/ebay-search`;
       
