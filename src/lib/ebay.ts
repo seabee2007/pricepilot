@@ -1,7 +1,7 @@
 import { ItemSummary, SearchFilters, VehicleCompatibility, ItemCompatibility, DealItem, EbayEvent, EventItem, DealSearchFilters, EventSearchFilters } from '../types';
 import { supabase } from './supabase';
 import { config } from './config';
-import { pickCategory, loadCategories } from './ebayCategories';
+import { pickCategory, loadCategories, searchCategories } from './ebayCategories';
 
 // Rate limiting and request deduplication
 const requestCache = new Map<string, Promise<any>>();
@@ -115,32 +115,80 @@ export async function searchLiveItems(
       
       console.log('✅ Session found, authenticated user:', session.user.id);
 
-      // Auto-detect category if not manually specified and not a vehicle search
-      let enhancedFilters = { ...filters };
+      // Step 1: Normalize the incoming category filter
+      const rawCategory = filters.category;
+      let normalizedCategory = 'all';
+      
+      console.log('🏷️ Raw category from filters:', rawCategory);
+      
+      if (rawCategory && rawCategory !== 'all') {
+        // Check if it's already a numeric category ID
+        if (/^\d+$/.test(rawCategory)) {
+          normalizedCategory = rawCategory;
+          console.log(`✅ Using numeric category ID: ${normalizedCategory}`);
+        } else {
+          // Non-numeric string - try to look up category by name/slug
+          console.log(`🔍 Looking up category for slug: "${rawCategory}"`);
+          try {
+            // Ensure categories are loaded
+            const categories = await loadCategories();
+            const matches = searchCategories(rawCategory, categories);
+            
+            if (matches.length > 0) {
+              normalizedCategory = matches[0].categoryId;
+              console.log(`✅ Slug → ID lookup success: "${rawCategory}" → ${normalizedCategory} (${matches[0].categoryName})`);
+            } else {
+              normalizedCategory = 'all';
+              console.log(`⚠️ No category found for slug: "${rawCategory}", using 'all'`);
+            }
+          } catch (error) {
+            console.warn('⚠️ Category lookup failed:', error instanceof Error ? error.message : String(error));
+            normalizedCategory = 'all';
+          }
+        }
+      }
+
+      // Step 2: Decide when to auto-detect
       const isVehicleQuery = query.toLowerCase().includes('car') || 
                            query.toLowerCase().includes('truck') || 
-                           query.toLowerCase().includes('motorcycle') ||
-                           filters.category?.includes('6001') || 
-                           filters.category?.includes('6028');
+                           query.toLowerCase().includes('motorcycle');
 
-      if (!filters.category && !isVehicleQuery) {
+      // Only skip auto-detection if we have a valid numeric category ID (not 'all')
+      const shouldSkipAutoDetection = /^\d+$/.test(normalizedCategory) && normalizedCategory !== 'all';
+      
+      if (!shouldSkipAutoDetection && !isVehicleQuery && normalizedCategory === 'all') {
         try {
-          console.log('🎯 Attempting automatic category detection...');
+          console.log('🎯 Running automatic category detection...');
+          // Ensure categories are loaded before detection
+          await loadCategories();
           const detectedCategoryId = pickCategory(query);
+          
           if (detectedCategoryId) {
-            enhancedFilters.category = detectedCategoryId;
+            normalizedCategory = detectedCategoryId;
             console.log(`✅ Auto-detected category ${detectedCategoryId} for query: "${query}"`);
           } else {
-            console.log('ℹ️ No category detected, using broader search');
+            console.log('ℹ️ No category auto-detected, using broader search');
           }
         } catch (error) {
-          console.warn('⚠️ Category detection failed (using manual selection or broader search):', error instanceof Error ? error.message : String(error));
-          // Continue without category - graceful fallback
+          console.warn('⚠️ Category auto-detection failed:', error instanceof Error ? error.message : String(error));
+          // Continue with normalizedCategory = 'all'
         }
-      } else if (filters.category) {
-        console.log(`🏷️ Using manually specified category: ${filters.category} (skipping auto-detection)`);
-      } else {
+      } else if (shouldSkipAutoDetection) {
+        console.log(`🏷️ Using manually specified category: ${normalizedCategory} (skipping auto-detection)`);
+      } else if (isVehicleQuery) {
         console.log('🚗 Vehicle query detected, skipping category detection');
+      }
+
+      // Step 3: Build enhanced filters with normalized category
+      let enhancedFilters = { ...filters };
+      
+      // Set the final category (don't pass 'all' to the API)
+      if (normalizedCategory !== 'all') {
+        enhancedFilters.category = normalizedCategory;
+        console.log(`📤 Final categoryId for API request: ${normalizedCategory}`);
+      } else {
+        delete enhancedFilters.category;
+        console.log('📤 No category specified for API request (broader search)');
       }
 
       // Ensure we include both auction and fixed price items by default for broader results
