@@ -78,13 +78,13 @@ const HomePage = () => {
         <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-8 border-l-4 ${activeMode === 'buy' ? 'border-blue-500' : 'border-green-500'}`}>
           {activeMode === 'buy' ? (
             <p className="text-gray-700 dark:text-gray-300">
-              <strong>Buy Mode:</strong> Find the lowest-priced items matching your keywords. 
-              Results are sorted by price (lowest first) to help you snag the best deal.
+              <strong>Buy Mode:</strong> Find the best deals matching your search. 
+              Results use eBay's smart relevance ranking to show the most relevant listings first, including both auctions and Buy It Now items.
             </p>
           ) : (
             <p className="text-gray-700 dark:text-gray-300">
               <strong>Sell Mode:</strong> See what similar items have sold for recently.
-              Results are sorted by price (highest first) to help you price your item competitively.
+              Results show completed sales to help you price your item competitively based on real market data.
             </p>
           )}
         </div>
@@ -120,7 +120,7 @@ const HomePage = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border-t-4 border-blue-500">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Find the Best Deals</h3>
             <p className="text-gray-600 dark:text-gray-400">
-              Our smart search filters through thousands of listings to find you the lowest prices, with options to filter by condition, shipping, and more.
+              Our smart category detection and relevance-based search helps you find the most relevant listings, with advanced filters for condition, shipping, and more.
             </p>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border-t-4 border-green-500">
