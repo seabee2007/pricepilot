@@ -93,15 +93,21 @@ export interface SavedSearch {
   created_at: string;
 }
 
+// Unified SavedItem interface that supports both individual items and search queries
 export interface SavedItem {
   id: string;
   user_id: string;
-  item_id: string;
-  title: string;
-  price: number;
-  currency: string;
+  
+  // Item type - determines which fields are populated
+  item_type: 'item' | 'search';
+  
+  // Individual item fields (when item_type = 'item')
+  item_id?: string;
+  title?: string;
+  price?: number;
+  currency?: string;
   image_url?: string;
-  item_url: string;
+  item_url?: string;
   condition?: string;
   seller_username?: string;
   seller_feedback_score?: number;
@@ -109,11 +115,32 @@ export interface SavedItem {
   shipping_cost?: number;
   shipping_currency?: string;
   buying_options?: string[];
+  
+  // Search query fields (when item_type = 'search')
+  search_query?: string;
+  search_filters?: SearchFilters;
+  
+  // Common fields for both types
   notes?: string;
   price_alert_threshold?: number;
   last_checked_price?: number;
   created_at: string;
   updated_at: string;
+}
+
+// Utility types for type-safe access
+export interface SavedItemIndividual extends SavedItem {
+  item_type: 'item';
+  item_id: string;
+  title: string;
+  price: number;
+  item_url: string;
+}
+
+export interface SavedItemSearch extends SavedItem {
+  item_type: 'search';
+  search_query: string;
+  search_filters: SearchFilters;
 }
 
 export interface PriceHistory {

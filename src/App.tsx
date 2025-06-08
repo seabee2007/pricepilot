@@ -3,8 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import HomePage from './pages/HomePage';
 import ResultsPage from './pages/ResultsPage';
-import SavedSearchesPage from './pages/SavedSearchesPage';
-import SavedItemsPage from './pages/SavedItemsPage';
+import SavedItemsPage from './pages/SavedSearchesPage';
 import PricingPage from './pages/PricingPage';
 import SuccessPage from './pages/SuccessPage';
 import SignUpPage from './pages/SignUpPage';
@@ -31,7 +30,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/results" element={<ResultsPage />} />
-                <Route path="/saved-searches" element={<SavedSearchesPage />} />
+                <Route path="/saved-searches" element={<SavedItemsPage />} />
                 <Route path="/saved-items" element={<SavedItemsPage />} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/success" element={<SuccessPage />} />

@@ -1,201 +1,221 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { SavedSearch } from '../types';
-import { getSavedSearches, deleteSavedSearch, triggerPriceAlertsManually, sendTestEmail } from '../lib/supabase';
-import SavedSearchItem from '../components/SavedSearchItem';
-import { PlusCircle, Search, Bell, TestTube2, Mail } from 'lucide-react';
+import { SavedItem } from '../types';
+import { getAllSavedItems, deleteSavedItem, triggerPriceAlertsManually, sendTestEmail } from '../lib/supabase';
+import SavedItemCard from '../components/SavedSearchItem'; // Will be renamed to SavedItemCard
+import AuthPrompt from '../components/AuthPrompt';
+import { getCurrentUser } from '../lib/supabase';
+import { Package, Search, Bell, TestTube, Loader2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
 
-const SavedSearchesPage = () => {
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+const SavedItemsPage = () => {
+  const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [testingAlerts, setTestingAlerts] = useState(false);
-  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [alertLoading, setAlertLoading] = useState(false);
+  const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'item' | 'search'>('all');
+
+  const fetchSavedItems = async () => {
+    try {
+      setLoading(true);
+      const items = await getAllSavedItems();
+      setSavedItems(items);
+    } catch (error) {
+      console.error('Error fetching saved items:', error);
+      toast.error('Failed to load saved items');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchSavedSearches = async () => {
-      setLoading(true);
-      try {
-        const searches = await getSavedSearches();
-        setSavedSearches(searches);
-      } catch (err) {
-        console.error('Error fetching saved searches:', err);
-        setError('Failed to load saved searches. Please try again.');
-      } finally {
+    const checkUser = async () => {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+      if (currentUser) {
+        fetchSavedItems();
+      } else {
         setLoading(false);
       }
     };
 
-    fetchSavedSearches();
+    checkUser();
   }, []);
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteSavedSearch(id);
-      setSavedSearches(prevSearches => prevSearches.filter(search => search.id !== id));
-    } catch (err) {
-      console.error('Error deleting saved search:', err);
-      setError('Failed to delete saved search. Please try again.');
+      await deleteSavedItem(id);
+      setSavedItems(prevItems => prevItems.filter(item => item.id !== id));
+    } catch (error) {
+      console.error('Error deleting saved item:', error);
+      toast.error('Failed to delete item');
     }
   };
 
-  const handleTestPriceAlerts = async () => {
-    if (savedSearches.length === 0) {
-      toast.error('No saved searches to test. Please save a search first.');
-      return;
-    }
-
-    setTestingAlerts(true);
-    console.log('🧪 Starting manual price alert test...');
-    
+  const handleTriggerAlerts = async () => {
     try {
+      setAlertLoading(true);
       const result = await triggerPriceAlertsManually();
-      console.log('🧪 Test result:', result);
-      
       if (result.success) {
-        toast.success(`✅ ${result.message}`);
-        console.log('✅ Price alerts test successful');
+        toast.success(result.message);
       } else {
-        toast.error(`❌ ${result.message}`);
-        console.error('❌ Price alerts test failed:', result.message);
+        toast.error(result.message);
       }
-    } catch (err) {
-      console.error('💥 Error testing price alerts:', err);
-      
-      // Show the specific error message if available
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      toast.error(`Failed to test price alerts: ${errorMessage}`);
+    } catch (error) {
+      console.error('Error triggering price alerts:', error);
+      toast.error('Failed to trigger price alerts');
     } finally {
-      setTestingAlerts(false);
+      setAlertLoading(false);
     }
   };
 
   const handleSendTestEmail = async () => {
-    setSendingTestEmail(true);
-    console.log('📧 Sending test email...');
-    
     try {
+      setTestEmailLoading(true);
       const result = await sendTestEmail();
-      console.log('📧 Test email result:', result);
-      
       if (result.success) {
-        toast.success(`✅ ${result.message}`);
-        console.log('✅ Test email sent successfully');
+        toast.success(result.message);
       } else {
-        toast.error(`❌ ${result.message}`);
-        console.error('❌ Test email failed:', result.message);
+        toast.error(result.message);
       }
-    } catch (err) {
-      console.error('💥 Error sending test email:', err);
-      
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      toast.error(`Failed to send test email: ${errorMessage}`);
+    } catch (error) {
+      console.error('Error sending test email:', error);
+      toast.error('Failed to send test email');
     } finally {
-      setSendingTestEmail(false);
+      setTestEmailLoading(false);
     }
   };
 
+  if (!user) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <AuthPrompt 
+          title="Sign in to view your saved items"
+          subtitle="Keep track of your favorite eBay items and search queries with price alerts."
+        />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Saved Searches</h1>
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 dark:border-blue-500"></div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center min-h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
       </div>
     );
   }
 
+  const filteredItems = savedItems.filter(item => {
+    if (filter === 'all') return true;
+    return item.item_type === filter;
+  });
+
+  const itemCount = savedItems.filter(item => item.item_type === 'item').length;
+  const searchCount = savedItems.filter(item => item.item_type === 'search').length;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Saved Searches</h1>
-        <div className="flex gap-3">
-          {savedSearches.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={handleTestPriceAlerts}
-              disabled={testingAlerts}
-              icon={<TestTube2 className="h-4 w-4" />}
-            >
-              {testingAlerts ? 'Testing...' : 'Test Price Alerts'}
-            </Button>
-          )}
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+          Saved Items
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          Manage your saved eBay items and search queries. Set price alerts to get notified when prices drop.
+        </p>
+
+        {/* Filter Tabs */}
+        <div className="flex flex-wrap gap-2 mb-6">
           <Button
-            variant="outline"
-            onClick={handleSendTestEmail}
-            disabled={sendingTestEmail}
-            icon={<Mail className="h-4 w-4" />}
+            variant={filter === 'all' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setFilter('all')}
+            className="flex items-center gap-2"
           >
-            {sendingTestEmail ? 'Sending...' : 'Send Test Email'}
+            All Items ({savedItems.length})
           </Button>
-          <Link to="/">
-            <Button
-              variant="outline"
-              icon={<PlusCircle className="h-4 w-4" />}
-            >
-              New Search
-            </Button>
-          </Link>
+          <Button
+            variant={filter === 'item' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setFilter('item')}
+            className="flex items-center gap-2"
+            icon={<Package className="h-4 w-4" />}
+          >
+            Individual Items ({itemCount})
+          </Button>
+          <Button
+            variant={filter === 'search' ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setFilter('search')}
+            className="flex items-center gap-2"
+            icon={<Search className="h-4 w-4" />}
+          >
+            Search Queries ({searchCount})
+          </Button>
         </div>
+
+        {savedItems.length > 0 && (
+          <div className="flex flex-wrap gap-3 mb-6">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleTriggerAlerts}
+              disabled={alertLoading}
+              className="flex items-center gap-2"
+              icon={alertLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
+            >
+              {alertLoading ? 'Checking...' : 'Check Price Alerts Now'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleSendTestEmail}
+              disabled={testEmailLoading}
+              className="flex items-center gap-2"
+              icon={testEmailLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
+            >
+              {testEmailLoading ? 'Sending...' : 'Send Test Email'}
+            </Button>
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded mb-6">
-          <p className="text-red-700 dark:text-red-400">{error}</p>
-        </div>
-      )}
-
-      {savedSearches.length > 0 && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-          <div className="flex items-start">
-            <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
-            <div>
-              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">
-                Price Alerts Active
-              </h3>
-              <p className="text-sm text-blue-700 dark:text-blue-300">
-                We'll monitor eBay prices and email you when items drop below your threshold.
-                Use the "Test Price Alerts" button to manually check all your saved searches.
-              </p>
-              
-              {/* Debug Info */}
-              <details className="mt-3">
-                <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer hover:underline">
-                  🔧 Debug Info (click to expand)
-                </summary>
-                <div className="mt-2 text-xs text-blue-600 dark:text-blue-400 font-mono">
-                  <div>Supabase URL: {import.meta.env.VITE_SUPABASE_URL ? '✅ Connected' : '❌ Missing'}</div>
-                  <div>API Key: {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✅ Configured' : '❌ Missing'}</div>
-                  <div>Edge Function: {import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-price-alerts</div>
-                </div>
-              </details>
-            </div>
+      {filteredItems.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="mx-auto w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+            {filter === 'item' ? (
+              <Package className="h-12 w-12 text-gray-400" />
+            ) : filter === 'search' ? (
+              <Search className="h-12 w-12 text-gray-400" />
+            ) : (
+              <Package className="h-12 w-12 text-gray-400" />
+            )}
           </div>
-        </div>
-      )}
-
-      {savedSearches.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow text-center p-8">
-          <Search className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
-          <h2 className="text-xl font-medium text-gray-900 dark:text-gray-100 mb-2">No saved searches yet</h2>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+            {filter === 'all' 
+              ? 'No saved items yet'
+              : filter === 'item'
+              ? 'No saved items yet'
+              : 'No saved searches yet'
+            }
+          </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Save your searches to get notified when prices drop below your threshold
+            {filter === 'all'
+              ? 'Start by searching for items and saving the ones you\'re interested in, or save your search queries for easy access.'
+              : filter === 'item'
+              ? 'Search for items and click the save button to add them to your collection.'
+              : 'Save your search queries to track price trends and set up alerts.'
+            }
           </p>
-          <Link to="/">
-            <Button variant="primary">
-              Start Searching
-            </Button>
-          </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {savedSearches.map(savedSearch => (
-            <SavedSearchItem
-              key={savedSearch.id}
-              savedSearch={savedSearch}
+        <div className="grid gap-6">
+          {filteredItems.map(savedItem => (
+            <SavedItemCard
+              key={savedItem.id}
+              savedItem={savedItem}
               onDelete={handleDelete}
             />
           ))}
@@ -205,4 +225,4 @@ const SavedSearchesPage = () => {
   );
 };
 
-export default SavedSearchesPage;
+export default SavedItemsPage;
