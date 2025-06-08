@@ -271,7 +271,7 @@ const getItemDetails = async (itemId: string): Promise<any> => {
 };
 
 // Main function
-const checkPriceAlerts = async () => {
+const checkPriceAlerts = async (requestBody: any = {}) => {
   console.log("🔍 Starting price alert check job for individual saved items");
   
   try {
@@ -317,13 +317,20 @@ const checkPriceAlerts = async () => {
         console.log(`💰 Item: "${savedItem.title}" | Current: $${currentPrice} | Threshold: $${threshold} | Last: $${savedItem.last_checked_price || 'N/A'}`);
         console.log(`🔗 eBay URL: ${savedItem.item_url}`);
         
-        // Check if price is below threshold and lower than last checked price
-        if (
-          threshold > 0 &&
-          currentPrice < threshold && 
-          (!savedItem.last_checked_price || currentPrice < savedItem.last_checked_price)
-        ) {
+        // Check if price is below threshold
+        // For manual triggers, be more lenient; for scheduled checks, only send if price dropped further
+        const shouldSendAlert = threshold > 0 && currentPrice < threshold && (
+          // Always send if never checked before
+          !savedItem.last_checked_price ||
+          // For manual triggers, send if price is below threshold (even if same as last check)
+          (requestBody?.trigger === 'manual' && currentPrice <= threshold) ||
+          // For scheduled checks, only send if price dropped further
+          (requestBody?.trigger !== 'manual' && currentPrice < savedItem.last_checked_price)
+        );
+        
+        if (shouldSendAlert) {
           console.log(`🚨 PRICE ALERT TRIGGERED for "${savedItem.title}" - sending email...`);
+          console.log(`💰 Details: Current=$${currentPrice}, Threshold=$${threshold}, Last=$${savedItem.last_checked_price || 'N/A'}, Trigger=${requestBody?.trigger || 'scheduled'}`);
           
           // Send price alert with specific item details
           await sendPriceAlert(
@@ -335,6 +342,8 @@ const checkPriceAlerts = async () => {
             savedItem.title
           );
           alertsSent++;
+        } else {
+          console.log(`⏭️ No alert sent for "${savedItem.title}" - Current=$${currentPrice}, Threshold=$${threshold}, Last=$${savedItem.last_checked_price || 'N/A'}`);
         }
         
         // Update last_checked_price in the saved_items table
@@ -600,7 +609,7 @@ Deno.serve(async (req) => {
     }
     
     // Run the price alert check
-    await checkPriceAlerts();
+    await checkPriceAlerts(requestBody);
     
     return new Response(
       JSON.stringify({ 
