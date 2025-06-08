@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { SearchMode, SearchFilters, PriceHistory, ItemSummary } from '../types';
-import { savePriceHistory, getPriceHistory, parseVehicleFromQuery } from '../lib/supabase';
+import { savePriceHistory, getPriceHistory } from '../lib/supabase';
 import { searchLiveItems, searchCompletedItems, calculateAveragePrice } from '../lib/ebay';
 import { AlertCircle, ArrowLeft } from 'lucide-react';
 import ResultsList from '../components/ResultsList';
 import PriceHistoryChart from '../components/PriceHistoryChart';
-import VehicleValueCard from '../components/VehicleValueCard';
 import AuthPrompt from '../components/AuthPrompt';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -245,14 +244,6 @@ const ResultsPage = () => {
                          filters.vehicleAspects ||
                          query.toLowerCase().match(/\b(car|truck|vehicle|auto|ford|chevrolet|dodge|toyota|honda|nissan|bmw|mercedes|audi|volkswagen|jeep|ram|gmc|cadillac|buick|lincoln|acura|lexus|infiniti|mazda|subaru|mitsubishi|hyundai|kia|volvo|porsche|ferrari|lamborghini|maserati|bentley|rolls|jaguar|land rover|mini|fiat|alfa romeo|chrysler|tesla|mustang|camaro|corvette|challenger|charger|viper|wrangler|silverado|f-150|tacoma|tundra|accord|civic|camry|prius|altima|sentra|pathfinder|pilot|cr-v|rav4|highlander|4runner|escalade|tahoe|suburban|yukon|explorer|escape|focus|fusion|edge|bronco)\b/);
 
-  // Parse vehicle information from query for vehicle value lookup
-  const vehicleInfo = useMemo(() => {
-    if (isVehicleSearch) {
-      return parseVehicleFromQuery(query);
-    }
-    return null;
-  }, [query, isVehicleSearch]);
-
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
       {/* Testing Mode Banner */}
@@ -325,18 +316,6 @@ VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
         )
       ) : (
         <>
-          {/* Vehicle Value Card for vehicle searches */}
-          {isVehicleSearch && vehicleInfo && (
-            <div className="mb-8">
-              <VehicleValueCard 
-                initialRequest={vehicleInfo}
-                onValueUpdate={(value) => {
-                  console.log('Vehicle value updated:', value);
-                }}
-              />
-            </div>
-          )}
-          
           <ResultsList 
             items={items} 
             mode={mode} 
