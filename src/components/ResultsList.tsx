@@ -223,7 +223,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                     className="flex items-start p-4 flex-1 sm:w-3/5 cursor-pointer hover:no-underline"
                   >
                     {/* Responsive Image Container */}
-                    <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-32 md:w-32 lg:h-40 lg:w-40 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
+                    <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-[120px] md:w-[120px] lg:h-[140px] lg:w-[140px] xl:h-[160px] xl:w-[160px] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
                       {item.image?.imageUrl ? (
                         <img 
                           src={item.image.imageUrl} 
