@@ -593,7 +593,8 @@ Deno.serve(async (req) => {
     
     // Ensure query is properly URL encoded
     searchUrl.searchParams.append('q', enhancedQuery);
-    searchUrl.searchParams.append('sort', completedModes.has(mode) ? 'price_desc' : 'price');
+    // Use bestMatch for relevance-based results, then sort by price client-side
+    searchUrl.searchParams.append('sort', 'bestMatch');
     
     // Add category filter if specified and not "all" - ALWAYS add for motors
     if (category === 'motors' || (category && category !== 'all')) {

@@ -122,8 +122,41 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
     }
   };
 
-  // Sort items
-  const sortedItems = [...items].sort((a, b) => {
+  // Dual-stage sort: Relevance first (from eBay), then price second (client-side)
+  // This gives us the best of both worlds: relevant results + optimal price sorting
+  const resortByPrice = (items: ItemSummary[], mode: SearchMode): ItemSummary[] => {
+    console.log(`🔄 Applying dual-stage sort: eBay relevance + client-side price (${mode} mode)`);
+    console.log(`📊 Original order from eBay (by relevance):`, items.slice(0, 3).map(i => ({
+      title: i.title.substring(0, 50) + '...',
+      price: i.price?.value
+    })));
+    
+    const sorted = [...items].sort((a, b) => {
+      const pa = parseFloat((a.price?.value || 0).toString());
+      const pb = parseFloat((b.price?.value || 0).toString());
+      
+      if (mode === "buy") {
+        // Buy mode: lowest price first (better for buyers)
+        return pa - pb;
+      } else {
+        // Sell mode: highest price first (shows market ceiling)
+        return pb - pa;
+      }
+    });
+    
+    console.log(`💰 After price sorting (${mode === 'buy' ? 'low→high' : 'high→low'}):`, sorted.slice(0, 3).map(i => ({
+      title: i.title.substring(0, 50) + '...',
+      price: i.price?.value
+    })));
+    
+    return sorted;
+  };
+
+  // Apply dual-stage sorting: eBay relevance + client-side price sorting
+  const sortedItems = resortByPrice(items, mode);
+
+  // Sort items - this is the old manual sorting that users can still use
+  const manuallySortedItems = [...sortedItems].sort((a, b) => {
     if (sortField === 'price') {
       const aPrice = a.price?.value || 0;
       const bPrice = b.price?.value || 0;
@@ -191,7 +224,7 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
         
         {/* Results */}
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {sortedItems.map((item, i) => {
+          {manuallySortedItems.map((item, i) => {
             console.log('🎨 Rendering item', i, item);
             console.log('🎨 Item ID:', item.itemId);
             console.log('🎨 Item title:', item.title);
