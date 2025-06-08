@@ -24,6 +24,33 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
   const uniqueVehicleKeys = extractUniqueVehicleKeys(items, category);
   const { valueMap: vehicleValueMap, loading: vehicleValuesLoading } = useVehicleValueMap(uniqueVehicleKeys);
 
+  // NEW: Keep eBay's relevance order by default, only apply price sorting when user explicitly requests it
+  // This mirrors eBay's web experience where relevance is primary
+  const [useManualSort, setUseManualSort] = useState(false);
+  
+  // Use eBay's original order by default (bestMatch relevance), unless user wants manual sorting
+  const displayItems = useManualSort ? (() => {
+    // Apply manual sorting only when requested
+    const sorted = [...items].sort((a, b) => {
+      if (sortField === 'price') {
+        const aPrice = a.price?.value || 0;
+        const bPrice = b.price?.value || 0;
+        return sortDirection === 'asc' ? aPrice - bPrice : bPrice - aPrice;
+      } else {
+        const aShipping = a.shippingOptions?.[0]?.shippingCost?.value || 0;
+        const bShipping = b.shippingOptions?.[0]?.shippingCost?.value || 0;
+        return sortDirection === 'asc' ? aShipping - bShipping : bShipping - aShipping;
+      }
+    });
+    
+    console.log(`🔄 Manual sort applied: ${sortField} (${sortDirection})`);
+    return sorted;
+  })() : (() => {
+    // Keep eBay's original bestMatch relevance order
+    console.log(`🎯 Using eBay's relevance order (bestMatch)`);
+    return items;
+  })();
+
   // Check which items are already saved when component mounts
   useEffect(() => {
     const checkSavedItems = async () => {
@@ -52,22 +79,33 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
   console.log('Items length:', items?.length || 0);
   console.log('Is loading:', isLoading);
   console.log('Mode:', mode);
+  console.log('Category:', category);
+  console.log('Using manual sort:', useManualSort);
+  console.log('Sort field:', sortField, 'Direction:', sortDirection);
   console.log('Items is array?', Array.isArray(items));
   console.log('🚗 Unique vehicle keys found:', uniqueVehicleKeys);
   console.log('🚗 Vehicle values loading:', vehicleValuesLoading);
   console.log('🚗 Vehicle value map:', vehicleValueMap);
   if (items && items.length > 0) {
     console.log('First item in ResultsList:', items[0]);
+    console.log('🎯 Will show in eBay relevance order unless manually sorted');
   }
   console.groupEnd();
 
   const handleSort = (field: 'price' | 'shipping') => {
+    setUseManualSort(true); // Enable manual sorting when user clicks
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
       setSortDirection(mode === 'buy' ? 'asc' : 'desc');
     }
+  };
+
+  // Add a button to reset to eBay's relevance order
+  const handleResetToRelevance = () => {
+    setUseManualSort(false);
+    console.log('🎯 Reset to eBay relevance order');
   };
 
   const handleSaveItem = async (item: ItemSummary, event: React.MouseEvent) => {
@@ -122,52 +160,6 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
     }
   };
 
-  // Dual-stage sort: Relevance first (from eBay), then price second (client-side)
-  // This gives us the best of both worlds: relevant results + optimal price sorting
-  const resortByPrice = (items: ItemSummary[], mode: SearchMode): ItemSummary[] => {
-    console.log(`🔄 Applying dual-stage sort: eBay relevance + client-side price (${mode} mode)`);
-    console.log(`📊 Original order from eBay (by relevance):`, items.slice(0, 3).map(i => ({
-      title: i.title.substring(0, 50) + '...',
-      price: i.price?.value
-    })));
-    
-    const sorted = [...items].sort((a, b) => {
-      const pa = parseFloat((a.price?.value || 0).toString());
-      const pb = parseFloat((b.price?.value || 0).toString());
-      
-      if (mode === "buy") {
-        // Buy mode: lowest price first (better for buyers)
-        return pa - pb;
-      } else {
-        // Sell mode: highest price first (shows market ceiling)
-        return pb - pa;
-      }
-    });
-    
-    console.log(`💰 After price sorting (${mode === 'buy' ? 'low→high' : 'high→low'}):`, sorted.slice(0, 3).map(i => ({
-      title: i.title.substring(0, 50) + '...',
-      price: i.price?.value
-    })));
-    
-    return sorted;
-  };
-
-  // Apply dual-stage sorting: eBay relevance + client-side price sorting
-  const sortedItems = resortByPrice(items, mode);
-
-  // Sort items - this is the old manual sorting that users can still use
-  const manuallySortedItems = [...sortedItems].sort((a, b) => {
-    if (sortField === 'price') {
-      const aPrice = a.price?.value || 0;
-      const bPrice = b.price?.value || 0;
-      return sortDirection === 'asc' ? aPrice - bPrice : bPrice - aPrice;
-    } else {
-      const aShipping = a.shippingOptions?.[0]?.shippingCost?.value || 0;
-      const bShipping = b.shippingOptions?.[0]?.shippingCost?.value || 0;
-      return sortDirection === 'asc' ? aShipping - bShipping : bShipping - aShipping;
-    }
-  });
-
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -191,29 +183,58 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           {items.length} {mode === 'buy' ? 'Deals' : 'Completed Sales'} Found
         </h2>
+        
+        {/* Sort Mode Indicator & Reset Button */}
+        <div className="flex items-center gap-3">
+          {useManualSort ? (
+            <>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Sorted by {sortField} ({sortDirection === 'asc' ? 'low to high' : 'high to low'})
+              </span>
+              <button
+                onClick={handleResetToRelevance}
+                className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                Reset to relevance
+              </button>
+            </>
+          ) : (
+            <span className="text-sm text-green-600 dark:text-green-400 font-medium">
+              🎯 Best Match (eBay relevance)
+            </span>
+          )}
+        </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">
         {/* Sort Header */}
         <div className="flex items-center bg-gray-50 dark:bg-gray-900 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-          <div className="w-full sm:w-3/5">Item</div>
+          <div className="w-full sm:w-3/5">
+            Item {!useManualSort && <span className="text-green-600 dark:text-green-400">(by relevance)</span>}
+          </div>
           <button 
-            className={`hidden sm:flex w-1/5 items-center ${sortField === 'price' ? 'text-blue-600 dark:text-blue-400' : ''}`}
+            className={`hidden sm:flex w-1/5 items-center ${
+              useManualSort && sortField === 'price' ? 'text-blue-600 dark:text-blue-400' : 'hover:text-blue-600 dark:hover:text-blue-400'
+            }`}
             onClick={() => handleSort('price')}
+            title="Click to sort by price"
           >
             Price
-            {sortField === 'price' && (
+            {useManualSort && sortField === 'price' && (
               sortDirection === 'asc' ? 
                 <ArrowUp className="ml-1 h-3 w-3" /> : 
                 <ArrowDown className="ml-1 h-3 w-3" />
             )}
           </button>
           <button 
-            className={`hidden sm:flex w-1/5 items-center ${sortField === 'shipping' ? 'text-blue-600 dark:text-blue-400' : ''}`}
+            className={`hidden sm:flex w-1/5 items-center ${
+              useManualSort && sortField === 'shipping' ? 'text-blue-600 dark:text-blue-400' : 'hover:text-blue-600 dark:hover:text-blue-400'
+            }`}
             onClick={() => handleSort('shipping')}
+            title="Click to sort by shipping cost"
           >
             Shipping
-            {sortField === 'shipping' && (
+            {useManualSort && sortField === 'shipping' && (
               sortDirection === 'asc' ? 
                 <ArrowUp className="ml-1 h-3 w-3" /> : 
                 <ArrowDown className="ml-1 h-3 w-3" />
@@ -224,7 +245,7 @@ const ResultsList = ({ items, mode, isLoading = false, category }: ResultsListPr
         
         {/* Results */}
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {manuallySortedItems.map((item, i) => {
+          {displayItems.map((item, i) => {
             console.log('🎨 Rendering item', i, item);
             console.log('🎨 Item ID:', item.itemId);
             console.log('🎨 Item title:', item.title);
