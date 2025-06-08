@@ -54,7 +54,16 @@ const PriceHistoryChart = ({
   } | null>(null);
 
   useEffect(() => {
+    let isCancelled = false;
+    
     const fetch30DayHistory = async () => {
+      // Only proceed if we have either a searchId or query
+      if (!searchId && !query) {
+        setError('No search criteria provided');
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
       
@@ -66,13 +75,16 @@ const PriceHistoryChart = ({
           result = await supabase.rpc('get_30d_price_history', { 
             p_search_id: searchId 
           });
-        } else {
+        } else if (query) {
           result = await supabase.rpc('get_30d_price_history_by_query', { 
             p_query: query 
           });
         }
 
-        if (result.error) {
+        // Check if component was unmounted or cancelled
+        if (isCancelled) return;
+
+        if (result?.error) {
           console.error('Error fetching price history:', result.error);
           // Fallback to legacy data if RPC fails
           if (data && data.length > 0) {
@@ -89,10 +101,11 @@ const PriceHistoryChart = ({
           } else {
             setError('No price history data available');
           }
+          setLoading(false);
           return;
         }
 
-        const historyData = (result.data || []).map((item: any) => ({
+        const historyData = (result?.data || []).map((item: any) => ({
           day: item.day,
           low_price: parseFloat(item.low_price) || 0,
           high_price: parseFloat(item.high_price) || 0,
@@ -101,18 +114,29 @@ const PriceHistoryChart = ({
           formatted_day: format(parseISO(item.day), 'MMM dd')
         }));
 
-        setChartData(historyData);
-        calculatePriceStats(historyData);
+        if (!isCancelled) {
+          setChartData(historyData);
+          calculatePriceStats(historyData);
+        }
       } catch (err) {
-        console.error('Error fetching price history:', err);
-        setError('Failed to load price history');
+        if (!isCancelled) {
+          console.error('Error fetching price history:', err);
+          setError('Failed to load price history');
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetch30DayHistory();
-  }, [query, searchId, data]);
+    
+    // Cleanup function to cancel ongoing requests
+    return () => {
+      isCancelled = true;
+    };
+  }, [query, searchId]); // Removed 'data' from dependency array to prevent infinite loops
 
   const calculatePriceStats = (data: DayPoint[]) => {
     if (data.length < 2) {
