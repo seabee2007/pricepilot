@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { SavedItem } from '../types';
-import { getAllSavedItems, deleteSavedItem, triggerPriceAlertsManually, sendTestEmail } from '../lib/supabase';
+import { getAllSavedItems, deleteSavedItem, triggerPriceAlertsManually, sendTestEmail, parseVehicleFromQuery } from '../lib/supabase';
 import SavedItemCard from '../components/SavedSearchItem'; // Will be renamed to SavedItemCard
 import AuthPrompt from '../components/AuthPrompt';
 import { getCurrentUser } from '../lib/supabase';
 import { Package, Bell, TestTube, Loader2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
+import { useVehicleValueMap, extractUniqueVehicleKeys, VehicleValue } from '../lib/useVehicleValueMap';
 
 const SavedItemsPage = () => {
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
@@ -14,6 +15,23 @@ const SavedItemsPage = () => {
   const [user, setUser] = useState<any>(null);
   const [alertLoading, setAlertLoading] = useState(false);
   const [testEmailLoading, setTestEmailLoading] = useState(false);
+
+  // 🔥 NEW: Extract unique vehicle keys and fetch values once for all saved items
+  const uniqueVehicleKeys = savedItems
+    .map(item => {
+      const vehicleInfo = parseVehicleFromQuery(item.title || '');
+      return vehicleInfo?.make && vehicleInfo?.model && vehicleInfo?.year 
+        ? `${vehicleInfo.make}|${vehicleInfo.model}|${vehicleInfo.year}`
+        : null;
+    })
+    .filter((key): key is string => key !== null)
+    .filter((key, index, arr) => arr.indexOf(key) === index); // Remove duplicates
+
+  const { valueMap: vehicleValueMap, loading: vehicleValuesLoading } = useVehicleValueMap(uniqueVehicleKeys);
+
+  // Debug logging
+  console.log('🚗 SavedItems - Unique vehicle keys:', uniqueVehicleKeys);
+  console.log('🚗 SavedItems - Vehicle value map:', vehicleValueMap);
 
   const fetchSavedItems = async () => {
     try {
@@ -166,14 +184,24 @@ const SavedItemsPage = () => {
         </div>
       ) : (
         <div className="grid gap-6">
-          {savedItems.map(savedItem => (
-            <SavedItemCard
-              key={savedItem.id}
-              savedItem={savedItem}
-              onDelete={handleDelete}
-              onUpdate={handleUpdate}
-            />
-          ))}
+          {savedItems.map(savedItem => {
+            // 🚗 NEW: Get vehicle value data for this saved item
+            const vehicleInfo = parseVehicleFromQuery(savedItem.title || '');
+            const vehicleKey = vehicleInfo?.make && vehicleInfo?.model && vehicleInfo?.year 
+              ? `${vehicleInfo.make}|${vehicleInfo.model}|${vehicleInfo.year}`
+              : null;
+            const vehicleValue = vehicleKey ? vehicleValueMap[vehicleKey] : null;
+
+            return (
+              <SavedItemCard
+                key={savedItem.id}
+                savedItem={savedItem}
+                onDelete={handleDelete}
+                onUpdate={handleUpdate}
+                vehicleValue={vehicleValue}
+              />
+            );
+          })}
         </div>
       )}
     </div>

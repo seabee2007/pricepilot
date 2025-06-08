@@ -1,113 +1,29 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SavedItem, SavedItemIndividual } from '../types';
-import { ExternalLink, Trash2, Package, Edit, Check, X, Bell, TrendingUp, TrendingDown, DollarSign, Loader2, Bug } from 'lucide-react';
+import { ExternalLink, Trash2, Package, Edit, Check, X, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import Button from './ui/Button';
-import { updateSavedItem, parseVehicleFromQuery, getVehicleValue, VehicleValueResponse, debugPriceHistory } from '../lib/supabase';
-import { useDebounce, useDeduplicatedCallback } from '../lib/hooks';
+import { updateSavedItem, parseVehicleFromQuery } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import { VehicleMarketValue } from './VehicleMarketValue';
+import { VehicleValue } from '../lib/useVehicleValueMap';
 
 interface SavedItemCardProps {
   savedItem: SavedItem;
   onDelete: (id: string) => void;
   onUpdate?: (id: string, updates: Partial<SavedItem>) => void;
+  vehicleValue?: VehicleValue | null;
 }
 
-const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) => {
+const SavedItemCard = ({ savedItem, onDelete, onUpdate, vehicleValue }: SavedItemCardProps) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isEditingAlert, setIsEditingAlert] = useState(false);
   const [alertValue, setAlertValue] = useState(savedItem.price_alert_threshold?.toString() || '');
   
-  // Vehicle value state
-  const [vehicleValue, setVehicleValue] = useState<VehicleValueResponse | null>(null);
-  const [loadingVehicleValue, setLoadingVehicleValue] = useState(false);
-  const [vehicleValueError, setVehicleValueError] = useState<string | null>(null);
-
   // Parse vehicle info once and memoize it
   const vehicleInfo = useMemo(() => {
     return parseVehicleFromQuery(savedItem.title || '');
   }, [savedItem.title]);
 
-  const isVehicleItem = vehicleInfo !== null;
-
-  // Create a stable key for the vehicle request
-  const vehicleKey = useMemo(() => {
-    if (!vehicleInfo?.make || !vehicleInfo?.model || !vehicleInfo?.year) return null;
-    return `${vehicleInfo.make}|${vehicleInfo.model}|${vehicleInfo.year}`;
-  }, [vehicleInfo?.make, vehicleInfo?.model, vehicleInfo?.year]);
-
-  // Debounced vehicle key to prevent rapid-fire requests
-  const debouncedVehicleKey = useDebounce(vehicleKey, 300);
-
-  // Deduplicated vehicle value fetcher
-  const fetchVehicleValue = useDeduplicatedCallback(
-    async (make: string, model: string, year: number) => {
-      return await getVehicleValue({
-        make,
-        model,
-        year,
-        mileage: vehicleInfo?.mileage,
-        trim: vehicleInfo?.trim,
-        zipCode: vehicleInfo?.zipCode
-      });
-    },
-    (make: string, model: string, year: number) => `${make}|${model}|${year}`,
-    500 // 500ms debounce
-  );
-
-  // Effect to fetch vehicle value - only runs when the debounced key changes
-  useEffect(() => {
-    if (!debouncedVehicleKey || !vehicleInfo?.make || !vehicleInfo?.model || !vehicleInfo?.year) {
-      return;
-    }
-
-    let isMounted = true;
-
-    const performFetch = async () => {
-      setLoadingVehicleValue(true);
-      setVehicleValueError(null);
-      
-      try {
-        const value = await fetchVehicleValue(
-          vehicleInfo.make!,
-          vehicleInfo.model!,
-          vehicleInfo.year!
-        );
-        
-        if (isMounted) {
-          setVehicleValue(value);
-        }
-      } catch (error) {
-        if (isMounted) {
-          console.error('Error fetching vehicle value:', error);
-          
-          // Handle specific error types
-          let errorMessage = 'Failed to get vehicle value';
-          if (error instanceof Error) {
-            if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
-              errorMessage = 'Rate limit reached. Please try again in a few minutes.';
-            } else if (error.message.includes('network') || error.message.includes('fetch')) {
-              errorMessage = 'Network error. Please check your connection.';
-            } else {
-              errorMessage = error.message;
-            }
-          }
-          
-          setVehicleValueError(errorMessage);
-        }
-      } finally {
-        if (isMounted) {
-          setLoadingVehicleValue(false);
-        }
-      }
-    };
-
-    performFetch();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [debouncedVehicleKey, fetchVehicleValue, vehicleInfo?.make, vehicleInfo?.model, vehicleInfo?.year]);
+  const isVehicleItem = vehicleInfo !== null && vehicleValue !== null;
 
   const handleDelete = () => {
     onDelete(savedItem.id);
@@ -173,7 +89,8 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
     console.log('🚗 SavedItemCard Debug:', {
       title: savedItem.title,
       vehicleInfo,
-      isVehicleItem
+      isVehicleItem,
+      vehicleValue
     });
   }
 
@@ -227,17 +144,6 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
             className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
             icon={<Trash2 className="h-4 w-4" />}
           />
-          {/* Temporary debug button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              console.log('🐛 Debug button clicked for item:', savedItem);
-              debugPriceHistory();
-            }}
-            className="text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 ml-2"
-            icon={<Bug className="h-4 w-4" />}
-          />
         </div>
       </div>
 
@@ -246,7 +152,6 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
         <div className="flex items-center justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <Bell className="h-4 w-4 text-blue-500 dark:text-blue-400" />
               <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Price Alert</span>
             </div>
             
@@ -309,15 +214,6 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
               </div>
             )}
           </div>
-          
-          {savedItem.last_checked_price && !isEditingAlert && (
-            <div className="text-right ml-4">
-              <p className="text-xs text-blue-600 dark:text-blue-400">Last checked</p>
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                ${savedItem.last_checked_price.toFixed(2)}
-              </p>
-            </div>
-          )}
         </div>
       </div>
 
@@ -328,19 +224,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
             <>
               <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Vehicle Market Value</h4>
               <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4">
-                {loadingVehicleValue ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-blue-500 mr-2" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Getting market value...</span>
-                  </div>
-                ) : vehicleValueError ? (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-red-600 dark:text-red-400">{vehicleValueError}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Market value data not available
-                    </p>
-                  </div>
-                ) : vehicleValue ? (
+                {vehicleValue ? (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
@@ -360,7 +244,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                         ) : (
                           <div>
                             <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                              {formatCurrency(vehicleValue.value || 0, vehicleValue.currency)}
+                              {formatCurrency(vehicleValue.avg || 0, vehicleValue.currency)}
                             </p>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
                               Market Value • {vehicleValue.cached ? 'Cached' : 'Live'} Data
@@ -383,8 +267,8 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                           </span>
                         </div>
                         {(() => {
-                          // Use average value for comparison, fallback to single value
-                          const marketValue = vehicleValue.avg || vehicleValue.value || 0;
+                          // Use average value for comparison
+                          const marketValue = vehicleValue.avg || 0;
                           const difference = savedItem.price - marketValue;
                           const percentDiff = (difference / marketValue) * 100;
                           const isGoodDeal = difference < 0; // Below market value is good
@@ -398,7 +282,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                               )}
                               <span className="text-xs font-medium">
                                 {isGoodDeal ? '' : '+'}{formatCurrency(Math.abs(difference))} 
-                                ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs {vehicleValue.avg ? 'avg' : 'market'}
+                                ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs avg
                               </span>
                             </div>
                           );
@@ -407,7 +291,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
                     )}
                     
                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                      Data from {vehicleValue.source === 'web_scraping' ? 'Web Scraping' : 'RapidAPI'} • Updated: {new Date(vehicleValue.timestamp).toLocaleDateString()}
+                      Data from {vehicleValue.source === 'web_scraping' ? 'Web Scraping' : 'RapidAPI'} • Updated: {vehicleValue.timestamp ? new Date(vehicleValue.timestamp).toLocaleDateString() : 'Unknown'}
                     </div>
                   </div>
                 ) : (
@@ -420,14 +304,11 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
           ) : vehicleInfo && vehicleInfo.make && vehicleInfo.model && vehicleInfo.year ? (
             <>
               <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Market Value Analysis</h4>
-              <VehicleMarketValue 
-                make={vehicleInfo.make} 
-                model={vehicleInfo.model} 
-                year={vehicleInfo.year}
-                mileage={vehicleInfo.mileage}
-                trim={vehicleInfo.trim}
-                zipCode={vehicleInfo.zipCode}
-              />
+              <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Vehicle market value not available
+                </p>
+              </div>
             </>
           ) : (
             <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
