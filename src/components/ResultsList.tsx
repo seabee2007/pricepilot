@@ -71,6 +71,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
 
   const handleSaveItem = async (item: ItemSummary, event: React.MouseEvent) => {
     event.stopPropagation(); // Prevent opening eBay listing
+    event.preventDefault(); // Prevent default link behavior
     
     if (savingItems.has(item.itemId)) {
       return; // Already saving this item
@@ -213,76 +214,79 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                 key={item.itemId} 
                 className="flex flex-col sm:flex-row hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors duration-150"
               >
-                <a 
-                  href={item.itemWebUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-start p-4 w-full sm:w-3/5 cursor-pointer hover:no-underline"
-                >
-                  {/* Responsive Image Container */}
-                  <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-32 md:w-32 lg:h-40 lg:w-40 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
-                    {item.image?.imageUrl ? (
-                      <img 
-                        src={item.image.imageUrl} 
-                        alt={item.title} 
-                        className="h-full w-full object-cover hover:scale-105 transition-transform duration-200"
-                      />
-                    ) : (
-                      <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs text-center">
-                        No Image
-                      </div>
-                    )}
-                  </div>
-                  <div className="ml-4 flex-1 min-w-0">
-                    <h3 className="text-sm sm:text-base font-medium text-gray-900 dark:text-gray-100 line-clamp-2 hover:underline mb-2">
-                      {truncateText(item.title, 80)}
-                    </h3>
-                    
-                    {/* Mobile Price/Shipping Info */}
-                    <div className="sm:hidden mb-3 space-y-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-lg font-bold text-gray-900 dark:text-white">
-                          {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
-                        </span>
-                        <div className="flex items-center text-sm">
-                          {item.shippingOptions && item.shippingOptions[0]?.shippingCost?.value === 0 ? (
-                            <span className="text-green-600 dark:text-green-400 font-medium flex items-center">
-                              <Truck className="mr-1 h-4 w-4" />
-                              Free Shipping
-                            </span>
-                          ) : (
-                            <span className="text-gray-600 dark:text-gray-400">
-                              + {item.shippingOptions && item.shippingOptions[0]?.shippingCost
-                                ? formatCurrency(item.shippingOptions[0].shippingCost.value, item.shippingOptions[0].shippingCost.currency)
-                                : 'shipping'}
-                            </span>
-                          )}
+                {/* Mobile layout: flex row with link and save button separate */}
+                <div className="flex sm:contents">
+                  <a 
+                    href={item.itemWebUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start p-4 flex-1 sm:w-3/5 cursor-pointer hover:no-underline"
+                  >
+                    {/* Responsive Image Container */}
+                    <div className="flex-shrink-0 h-[90px] w-[90px] sm:h-[106px] sm:w-[106px] md:h-32 md:w-32 lg:h-40 lg:w-40 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-sm">
+                      {item.image?.imageUrl ? (
+                        <img 
+                          src={item.image.imageUrl} 
+                          alt={item.title} 
+                          className="h-full w-full object-cover hover:scale-105 transition-transform duration-200"
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-gray-400 text-xs text-center">
+                          No Image
+                        </div>
+                      )}
+                    </div>
+                    <div className="ml-4 flex-1 min-w-0">
+                      <h3 className="text-sm sm:text-base font-medium text-gray-900 dark:text-gray-100 line-clamp-2 hover:underline mb-2">
+                        {truncateText(item.title, 80)}
+                      </h3>
+                      
+                      {/* Mobile Price/Shipping Info */}
+                      <div className="sm:hidden mb-3 space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-lg font-bold text-gray-900 dark:text-white">
+                            {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
+                          </span>
+                          <div className="flex items-center text-sm">
+                            {item.shippingOptions && item.shippingOptions[0]?.shippingCost?.value === 0 ? (
+                              <span className="text-green-600 dark:text-green-400 font-medium flex items-center">
+                                <Truck className="mr-1 h-4 w-4" />
+                                Free Shipping
+                              </span>
+                            ) : (
+                              <span className="text-gray-600 dark:text-gray-400">
+                                + {item.shippingOptions && item.shippingOptions[0]?.shippingCost
+                                  ? formatCurrency(item.shippingOptions[0].shippingCost.value, item.shippingOptions[0].shippingCost.currency)
+                                  : 'shipping'}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        {item.condition && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                            {item.condition}
+                          </span>
+                        )}
+                        {item.buyingOptions?.includes('FIXED_PRICE') && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                            Buy It Now
+                          </span>
+                        )}
+                        {item.seller && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                            <Shield className="mr-1 h-3 w-3" />
+                            {item.seller.feedbackScore || 0} {item.seller.feedbackPercentage && `(${item.seller.feedbackPercentage})`}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    
-                    <div className="flex flex-wrap gap-2">
-                      {item.condition && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
-                          {item.condition}
-                        </span>
-                      )}
-                      {item.buyingOptions?.includes('FIXED_PRICE') && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-                          Buy It Now
-                        </span>
-                      )}
-                      {item.seller && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                          <Shield className="mr-1 h-3 w-3" />
-                          {item.seller.feedbackScore || 0} {item.seller.feedbackPercentage && `(${item.seller.feedbackPercentage})`}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  </a>
                   
-                  {/* Mobile Save Button */}
-                  <div className="sm:hidden ml-2 flex-shrink-0">
+                  {/* Mobile Save Button - now outside the link */}
+                  <div className="sm:hidden flex items-center p-4 pl-0">
                     <button
                       onClick={(e) => handleSaveItem(item, e)}
                       disabled={isSaving}
@@ -302,7 +306,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
                       )}
                     </button>
                   </div>
-                </a>
+                </div>
                 
                 {/* Desktop Price Column */}
                 <div className="hidden sm:flex flex-col justify-center p-4 w-1/5">
