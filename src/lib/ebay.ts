@@ -134,11 +134,11 @@ export async function searchLiveItems(
             console.log('ℹ️ No category detected, using broader search');
           }
         } catch (error) {
-          console.warn('⚠️ Category detection failed:', error);
+          console.warn('⚠️ Category detection failed (using manual selection or broader search):', error instanceof Error ? error.message : String(error));
           // Continue without category - graceful fallback
         }
       } else if (filters.category) {
-        console.log('🏷️ Using manually specified category:', filters.category);
+        console.log(`🏷️ Using manually specified category: ${filters.category} (skipping auto-detection)`);
       } else {
         console.log('🚗 Vehicle query detected, skipping category detection');
       }

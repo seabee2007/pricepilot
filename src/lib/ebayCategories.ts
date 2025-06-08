@@ -123,6 +123,9 @@ async function getEbayOAuthToken(): Promise<string> {
  * Normalize text for keyword matching
  */
 function normalizeText(text: string): string {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
   return text
     .toLowerCase()
     .replace(/[^\w\s]/g, ' ')  // Remove punctuation
@@ -137,11 +140,11 @@ function generateKeywords(categoryName: string, categoryPath: string): string[] 
   const keywords = new Set<string>();
   
   // Add words from category name
-  const nameWords = normalizeText(categoryName).split(' ').filter(word => word.length > 2);
+  const nameWords = normalizeText(categoryName || '').split(' ').filter(word => word.length > 2);
   nameWords.forEach(word => keywords.add(word));
   
   // Add words from full path
-  const pathWords = normalizeText(categoryPath).split(' ').filter(word => word.length > 2);
+  const pathWords = normalizeText(categoryPath || '').split(' ').filter(word => word.length > 2);
   pathWords.forEach(word => keywords.add(word));
   
   // Add synonyms
@@ -172,8 +175,15 @@ function extractLeafCategories(
   parentPath: string = '',
   level: number = 0
 ): CategoryDef[] {
-  const currentPath = buildCategoryPath(node, parentPath);
   const categories: CategoryDef[] = [];
+  
+  // Skip if node is invalid
+  if (!node || !node.categoryId || !node.categoryName) {
+    console.warn('⚠️ Skipping invalid category node:', node);
+    return categories;
+  }
+  
+  const currentPath = buildCategoryPath(node, parentPath);
   
   // Skip excluded categories (motors, etc.)
   if (EXCLUDED_CATEGORIES.has(node.categoryId)) {
@@ -183,22 +193,30 @@ function extractLeafCategories(
   
   // If this is a leaf node, add it to our categories
   if (node.leafCategoryTreeNode || !node.childCategoryTreeNodes || node.childCategoryTreeNodes.length === 0) {
-    const keywords = generateKeywords(node.categoryName, currentPath);
-    
-    categories.push({
-      categoryId: node.categoryId,
-      categoryName: node.categoryName,
-      categoryPath: currentPath,
-      keywords,
-      level,
-      parentId: node.parentCategoryTreeNodeId
-    });
+    try {
+      const keywords = generateKeywords(node.categoryName, currentPath);
+      
+      categories.push({
+        categoryId: node.categoryId,
+        categoryName: node.categoryName,
+        categoryPath: currentPath,
+        keywords,
+        level,
+        parentId: node.parentCategoryTreeNodeId
+      });
+    } catch (error) {
+      console.warn('⚠️ Error processing category keywords:', node.categoryName, error);
+    }
   }
   
   // Recursively process children
-  if (node.childCategoryTreeNodes) {
+  if (node.childCategoryTreeNodes && Array.isArray(node.childCategoryTreeNodes)) {
     for (const child of node.childCategoryTreeNodes) {
-      categories.push(...extractLeafCategories(child, currentPath, level + 1));
+      try {
+        categories.push(...extractLeafCategories(child, currentPath, level + 1));
+      } catch (error) {
+        console.warn('⚠️ Error processing child category:', child?.categoryName, error);
+      }
     }
   }
   
