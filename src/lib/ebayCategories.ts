@@ -100,6 +100,70 @@ let categoryCache: CategoryCache | null = null;
 let refreshTimer: NodeJS.Timeout | null = null;
 
 // ===============================
+// CATEGORY OVERRIDE MAP
+// ===============================
+
+// High-priority direct mappings for common search terms
+// First match wins - put highest priority overrides at the top
+const CATEGORY_OVERRIDES: [RegExp, string, string][] = [
+  // Electronics - Cell Phones & Smartphones
+  [/\biphone\b/i,           '9355', 'Cell Phones & Smartphones'],
+  [/\bsamsung\s*galaxy\b/i, '9355', 'Cell Phones & Smartphones'],
+  [/\bpixel\b/i,            '9355', 'Cell Phones & Smartphones'],
+  [/\bsmartphone\b/i,       '9355', 'Cell Phones & Smartphones'],
+  [/\bmobile\s*phone\b/i,   '9355', 'Cell Phones & Smartphones'],
+  [/\bcell\s*phone\b/i,     '9355', 'Cell Phones & Smartphones'],
+
+  // Automotive - Car Audio & Electronics
+  [/\bcar\s*radio\b/i,      '15032', 'Car Audio & Video'],
+  [/\bcar\s*stereo\b/i,     '15032', 'Car Audio & Video'],
+  [/\bcar\s*audio\b/i,      '15032', 'Car Audio & Video'],
+  [/\bcarplay\b/i,          '15032', 'Car Audio & Video'],
+  [/\bandroid\s*auto\b/i,   '15032', 'Car Audio & Video'],
+
+  // Electronics - Computers
+  [/\bmacbook\b/i,          '177', 'Computers/Tablets & Networking'],
+  [/\blaptop\b/i,           '177', 'Computers/Tablets & Networking'],
+  [/\bnotebook\b/i,         '177', 'Computers/Tablets & Networking'],
+  [/\bipad\b/i,             '171485', 'iPad/Tablet/eBook Accessories'],
+
+  // Gaming
+  [/\bplaystation\s*5\b/i,  '139973', 'Video Game Consoles'],
+  [/\bps5\b/i,              '139973', 'Video Game Consoles'],
+  [/\bxbox\s*series\b/i,    '139973', 'Video Game Consoles'],
+  [/\bnintendo\s*switch\b/i,'139973', 'Video Game Consoles'],
+
+  // Audio
+  [/\bairpods\b/i,          '15052', 'Portable Audio & Headphones'],
+  [/\bheadphones\b/i,       '15052', 'Portable Audio & Headphones'],
+  [/\bearbuds\b/i,          '15052', 'Portable Audio & Headphones'],
+
+  // TV & Video
+  [/\bapple\s*tv\b/i,       '67729', 'Streaming Media Players'],
+  [/\broku\b/i,             '67729', 'Streaming Media Players'],
+  [/\bfirestick\b/i,        '67729', 'Streaming Media Players'],
+];
+
+/**
+ * Fast category override using regex patterns
+ * Returns category ID if a pattern matches, undefined otherwise
+ */
+export function getOverrideCategory(query: string): { categoryId: string; categoryName: string } | undefined {
+  if (!query || query.trim().length === 0) {
+    return undefined;
+  }
+
+  for (const [regex, categoryId, categoryName] of CATEGORY_OVERRIDES) {
+    if (regex.test(query)) {
+      console.log(`🔖 Override matched "${regex.source}" → ${categoryId} (${categoryName})`);
+      return { categoryId, categoryName };
+    }
+  }
+
+  return undefined;
+}
+
+// ===============================
 // UTILITY FUNCTIONS
 // ===============================
 
@@ -334,12 +398,24 @@ export async function loadCategories(forceRefresh: boolean = false): Promise<Cat
 }
 
 /**
- * Pick the best category for a search query using keyword matching
+ * Pick the best category for a search query using override map first, then keyword matching
  */
 export function pickCategory(query: string, categories?: CategoryDef[]): string | undefined {
   if (!query || query.trim().length === 0) {
     return undefined;
   }
+  
+  console.log(`🎯 Picking category for query: "${query}"`);
+  
+  // Step 1: Try override map first (fast path)
+  const override = getOverrideCategory(query);
+  if (override) {
+    console.log(`✅ Override category selected: ${override.categoryName} (${override.categoryId})`);
+    return override.categoryId;
+  }
+  
+  // Step 2: Fall back to complex taxonomy-based matching
+  console.log('🔍 No override found, trying taxonomy-based detection...');
   
   // Use provided categories or cache
   const cats = categories || categoryCache?.categories;
@@ -347,8 +423,6 @@ export function pickCategory(query: string, categories?: CategoryDef[]): string 
     console.log('⚠️ No categories available for matching');
     return undefined;
   }
-  
-  console.log(`🎯 Picking category for query: "${query}"`);
   
   // Normalize query
   const normalizedQuery = normalizeText(query);
@@ -401,7 +475,7 @@ export function pickCategory(query: string, categories?: CategoryDef[]): string 
   // Return the best match if it has a reasonable score
   const bestMatch = categoryScores[0];
   if (bestMatch && bestMatch.score >= 3) { // Require at least one exact match
-    console.log(`✅ Selected category: ${bestMatch.category.categoryName} (${bestMatch.category.categoryId})`);
+    console.log(`✅ Taxonomy-based category selected: ${bestMatch.category.categoryName} (${bestMatch.category.categoryId})`);
     return bestMatch.category.categoryId;
   }
   

@@ -1,7 +1,7 @@
 import { ItemSummary, SearchFilters, VehicleCompatibility, ItemCompatibility, DealItem, EbayEvent, EventItem, DealSearchFilters, EventSearchFilters } from '../types';
 import { supabase } from './supabase';
 import { config } from './config';
-import { pickCategory, loadCategories, searchCategories } from './ebayCategories';
+import { pickCategory, loadCategories, searchCategories, getOverrideCategory } from './ebayCategories';
 
 // Rate limiting and request deduplication
 const requestCache = new Map<string, Promise<any>>();
