@@ -38,76 +38,32 @@ export interface ItemSummary {
 }
 
 export interface SearchFilters {
-  category?: string;
   conditionIds?: number[];
   freeShipping?: boolean;
   sellerLocation?: string;
   buyItNowOnly?: boolean;
-  auctionOnly?: boolean;
   postalCode?: string;
-  countryCode?: string;
-  
-  // Enhanced filters based on eBay Browse API
-  priceRange?: {
-    min?: number;
-    max?: number;
-    currency?: string;
-  };
-  returnsAccepted?: boolean;
-  searchInDescription?: boolean;
-  sellerAccountType?: 'BUSINESS' | 'INDIVIDUAL';
-  qualifiedPrograms?: ('EBAY_PLUS' | 'AUTHENTICITY_GUARANTEE' | 'AUTHENTICITY_VERIFICATION')[];
-  excludeSellers?: string[];
-  charityOnly?: boolean;
-  itemEndDate?: {
-    start?: string;
-    end?: string;
-  };
-  itemLocationCountry?: string;
-  deliveryCountry?: string;
-  deliveryPostalCode?: string;
-  
-  // Automotive compatibility filters
-  compatibilityFilter?: VehicleCompatibility;
-  
-  // Direct aspect filter string (for ASPECT_REFINEMENTS and vehicle searches)
-  aspectFilter?: string;
-  
-  // Vehicle-specific aspects for Cars & Trucks category
-  vehicleAspects?: {
-    make?: string;
-    model?: string;
-    year?: string;
-    yearFrom?: string;
-    yearTo?: string;
-  };
+  category?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  vehicleAspects?: Record<string, string>;
 }
 
-export interface SavedSearch {
-  id: string;
-  user_id: string;
-  query: string;
-  filters: SearchFilters;
-  price_threshold: number;
-  last_checked_price: number | null;
-  created_at: string;
-}
-
-// Unified SavedItem interface that supports both individual items and search queries
+// Individual saved item interface - simplified for items only
 export interface SavedItem {
   id: string;
   user_id: string;
   
-  // Item type - determines which fields are populated
-  item_type: 'item' | 'search';
+  // All items are individual eBay items now
+  item_type: 'item';
   
-  // Individual item fields (when item_type = 'item')
-  item_id?: string;
-  title?: string;
-  price?: number;
-  currency?: string;
+  // Individual item fields
+  item_id: string;
+  title: string;
+  price: number;
+  currency: string;
   image_url?: string;
-  item_url?: string;
+  item_url: string;
   condition?: string;
   seller_username?: string;
   seller_feedback_score?: number;
@@ -116,11 +72,7 @@ export interface SavedItem {
   shipping_currency?: string;
   buying_options?: string[];
   
-  // Search query fields (when item_type = 'search')
-  search_query?: string;
-  search_filters?: SearchFilters;
-  
-  // Common fields for both types
+  // Common fields
   notes?: string;
   price_alert_threshold?: number;
   last_checked_price?: number;
@@ -128,19 +80,9 @@ export interface SavedItem {
   updated_at: string;
 }
 
-// Utility types for type-safe access
+// Type alias for individual items (now the only type)
 export interface SavedItemIndividual extends SavedItem {
   item_type: 'item';
-  item_id: string;
-  title: string;
-  price: number;
-  item_url: string;
-}
-
-export interface SavedItemSearch extends SavedItem {
-  item_type: 'search';
-  search_query: string;
-  search_filters: SearchFilters;
 }
 
 export interface PriceHistory {

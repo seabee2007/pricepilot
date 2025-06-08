@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ItemSummary, SearchMode } from '../types';
 import { formatCurrency, truncateText, getConditionName } from '../lib/utils';
-import { ArrowUp, ArrowDown, ExternalLink, BookmarkPlus, Truck, Shield, Heart, HeartOff } from 'lucide-react';
+import { ArrowUp, ArrowDown, ExternalLink, Truck, Shield, Heart, HeartOff } from 'lucide-react';
 import Button from './ui/Button';
 import { saveIndividualItem, checkIfItemSaved, deleteSavedItem, getAllSavedItems } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -9,18 +9,17 @@ import toast from 'react-hot-toast';
 interface ResultsListProps {
   items: ItemSummary[];
   mode: SearchMode;
-  onSaveSearch?: () => void;
   isLoading?: boolean;
 }
 
-const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsListProps) => {
+const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
   const [sortField, setSortField] = useState<'price' | 'shipping'>('price');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(mode === 'buy' ? 'asc' : 'desc');
   const [savedItemIds, setSavedItemIds] = useState<Set<string>>(new Set());
   const [savingItems, setSavingItems] = useState<Set<string>>(new Set());
 
   // Check which items are already saved when component mounts
-  useState(() => {
+  useEffect(() => {
     const checkSavedItems = async () => {
       try {
         const savedItems = await getAllSavedItems();
@@ -39,7 +38,7 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
     if (items.length > 0) {
       checkSavedItems();
     }
-  });
+  }, [items.length]);
 
   // 🕵️‍♂️ Debug component props
   console.group('🕵️‍♂️ ResultsList component debug');
@@ -59,13 +58,6 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
     } else {
       setSortField(field);
       setSortDirection(mode === 'buy' ? 'asc' : 'desc');
-    }
-  };
-
-  const handleSaveSearch = () => {
-    if (onSaveSearch) {
-      onSaveSearch();
-      toast.success('Search saved successfully!');
     }
   };
 
@@ -153,20 +145,10 @@ const ResultsList = ({ items, mode, onSaveSearch, isLoading = false }: ResultsLi
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           {items.length} {mode === 'buy' ? 'Deals' : 'Completed Sales'} Found
         </h2>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline"
-            onClick={handleSaveSearch}
-            icon={<BookmarkPlus className="h-4 w-4" />}
-            size="sm"
-          >
-            Save Search
-          </Button>
-        </div>
       </div>
       
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden mb-8">

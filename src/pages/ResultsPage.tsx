@@ -1,13 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { SearchMode, SearchFilters, PriceHistory, ItemSummary } from '../types';
+import { savePriceHistory, getPriceHistory } from '../lib/supabase';
+import { searchLiveItems, searchCompletedItems, calculateAveragePrice } from '../lib/ebay';
+import { AlertCircle, ArrowLeft } from 'lucide-react';
 import ResultsList from '../components/ResultsList';
 import PriceHistoryChart from '../components/PriceHistoryChart';
-import SaveThresholdModal from '../components/SaveThresholdModal';
 import AuthPrompt from '../components/AuthPrompt';
-import { ItemSummary, SearchFilters, SearchMode, PriceHistory } from '../types';
-import { searchLiveItems, searchCompletedItems, calculateAveragePrice } from '../lib/ebay';
-import { savePriceHistory, saveSearch, getPriceHistory, get30DayPriceHistory } from '../lib/supabase';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
 import { config } from '../lib/config';
@@ -34,7 +33,6 @@ const ResultsPage = () => {
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showSaveModal, setShowSaveModal] = useState(false);
   const [lowestPrice, setLowestPrice] = useState(0);
   const [isAuthError, setIsAuthError] = useState(false);
 
@@ -87,7 +85,7 @@ const ResultsPage = () => {
           
           // For sell mode, also fetch enhanced price history
           try {
-            const enhancedHistory = await get30DayPriceHistory(undefined, query);
+            const enhancedHistory = await getPriceHistory(undefined, query);
             if (enhancedHistory && enhancedHistory.length > 0) {
               // Convert to legacy format for compatibility
               const legacyHistory = enhancedHistory.map(point => ({
@@ -99,12 +97,12 @@ const ResultsPage = () => {
               setPriceHistory(legacyHistory);
             } else {
               // Fallback to legacy price history
-              const history = await getPriceHistory(query);
+              const history = await getPriceHistory(undefined, query);
               setPriceHistory(history);
             }
           } catch (historyError) {
             console.error('Error fetching enhanced price history, falling back to legacy:', historyError);
-            const history = await getPriceHistory(query);
+            const history = await getPriceHistory(undefined, query);
             setPriceHistory(history);
           }
           
@@ -123,7 +121,7 @@ const ResultsPage = () => {
               
               // Refresh price history after adding new point
               try {
-                const updatedHistory = await get30DayPriceHistory(undefined, query);
+                const updatedHistory = await getPriceHistory(undefined, query);
                 if (updatedHistory && updatedHistory.length > 0) {
                   const legacyHistory = updatedHistory.map(point => ({
                     id: `${query}-${point.day}`,
@@ -226,21 +224,6 @@ const ResultsPage = () => {
     };
   }, [query, mode, filters, navigate]); // filters is now properly memoized
 
-  const handleSaveSearch = () => {
-    setShowSaveModal(true);
-  };
-
-  const handleSaveWithThreshold = async (threshold: number) => {
-    try {
-      await saveSearch(query, filters, threshold);
-      setShowSaveModal(false);
-      toast.success('Search saved! You will be notified when prices drop below your threshold.');
-    } catch (err) {
-      console.error('Error saving search:', err);
-      toast.error('Failed to save search. Please try again.');
-    }
-  };
-
   const goBack = () => {
     // Check if this is a vehicle/motors search and navigate accordingly
     const isVehicleSearch = filters.category === 'motors' || 
@@ -336,7 +319,6 @@ VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
           <ResultsList 
             items={items} 
             mode={mode} 
-            onSaveSearch={handleSaveSearch}
             isLoading={loading}
           />
           
@@ -349,15 +331,6 @@ VITE_EBAY_CLIENT_SECRET=your_ebay_client_secret_here`}
             />
           )}
         </>
-      )}
-      
-      {showSaveModal && (
-        <SaveThresholdModal 
-          isOpen={showSaveModal}
-          onClose={() => setShowSaveModal(false)}
-          onSave={handleSaveWithThreshold}
-          currentLowestPrice={lowestPrice}
-        />
       )}
     </div>
   );

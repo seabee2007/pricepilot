@@ -84,10 +84,10 @@ const SuccessPage = () => {
                   <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
                   <div>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      Unlimited Saved Searches
+                      Unlimited Saved Items
                     </p>
                     <p className="text-xs text-gray-600 dark:text-gray-400">
-                      Save as many searches as you want with custom price alerts
+                      Save as many eBay items as you want with custom price alerts
                     </p>
                   </div>
                 </div>
@@ -124,9 +124,9 @@ const SuccessPage = () => {
                 </Button>
               </Link>
               
-              <Link to="/saved-searches">
+              <Link to="/saved-items">
                 <Button variant="outline" className="w-full">
-                  View Saved Searches
+                  View Saved Items
                 </Button>
               </Link>
             </div>

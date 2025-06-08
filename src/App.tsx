@@ -30,8 +30,8 @@ function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/results" element={<ResultsPage />} />
-                <Route path="/saved-searches" element={<SavedItemsPage />} />
                 <Route path="/saved-items" element={<SavedItemsPage />} />
+                <Route path="/saved-searches" element={<SavedItemsPage />} />
                 <Route path="/pricing" element={<PricingPage />} />
                 <Route path="/success" element={<SuccessPage />} />
                 <Route path="*" element={<NotFoundPage />} />

@@ -4,7 +4,7 @@ import { getAllSavedItems, deleteSavedItem, triggerPriceAlertsManually, sendTest
 import SavedItemCard from '../components/SavedSearchItem'; // Will be renamed to SavedItemCard
 import AuthPrompt from '../components/AuthPrompt';
 import { getCurrentUser } from '../lib/supabase';
-import { Package, Search, Bell, TestTube, Loader2 } from 'lucide-react';
+import { Package, Bell, TestTube, Loader2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
 
@@ -14,13 +14,14 @@ const SavedItemsPage = () => {
   const [user, setUser] = useState<any>(null);
   const [alertLoading, setAlertLoading] = useState(false);
   const [testEmailLoading, setTestEmailLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'item' | 'search'>('all');
 
   const fetchSavedItems = async () => {
     try {
       setLoading(true);
       const items = await getAllSavedItems();
-      setSavedItems(items);
+      // Filter to only show individual items
+      const individualItems = items.filter(item => item.item_type === 'item');
+      setSavedItems(individualItems);
     } catch (error) {
       console.error('Error fetching saved items:', error);
       toast.error('Failed to load saved items');
@@ -92,7 +93,6 @@ const SavedItemsPage = () => {
       <div className="container mx-auto px-4 py-8">
         <AuthPrompt 
           title="Sign in to view your saved items"
-          subtitle="Keep track of your favorite eBay items and search queries with price alerts."
         />
       </div>
     );
@@ -108,14 +108,6 @@ const SavedItemsPage = () => {
     );
   }
 
-  const filteredItems = savedItems.filter(item => {
-    if (filter === 'all') return true;
-    return item.item_type === filter;
-  });
-
-  const itemCount = savedItems.filter(item => item.item_type === 'item').length;
-  const searchCount = savedItems.filter(item => item.item_type === 'search').length;
-
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
@@ -123,38 +115,8 @@ const SavedItemsPage = () => {
           Saved Items
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mb-6">
-          Manage your saved eBay items and search queries. Set price alerts to get notified when prices drop.
+          Manage your saved eBay items. Set price alerts to get notified when prices drop.
         </p>
-
-        {/* Filter Tabs */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <Button
-            variant={filter === 'all' ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setFilter('all')}
-            className="flex items-center gap-2"
-          >
-            All Items ({savedItems.length})
-          </Button>
-          <Button
-            variant={filter === 'item' ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setFilter('item')}
-            className="flex items-center gap-2"
-            icon={<Package className="h-4 w-4" />}
-          >
-            Individual Items ({itemCount})
-          </Button>
-          <Button
-            variant={filter === 'search' ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setFilter('search')}
-            className="flex items-center gap-2"
-            icon={<Search className="h-4 w-4" />}
-          >
-            Search Queries ({searchCount})
-          </Button>
-        </div>
 
         {savedItems.length > 0 && (
           <div className="flex flex-wrap gap-3 mb-6">
@@ -182,37 +144,21 @@ const SavedItemsPage = () => {
         )}
       </div>
 
-      {filteredItems.length === 0 ? (
+      {savedItems.length === 0 ? (
         <div className="text-center py-12">
           <div className="mx-auto w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-            {filter === 'item' ? (
-              <Package className="h-12 w-12 text-gray-400" />
-            ) : filter === 'search' ? (
-              <Search className="h-12 w-12 text-gray-400" />
-            ) : (
-              <Package className="h-12 w-12 text-gray-400" />
-            )}
+            <Package className="h-12 w-12 text-gray-400" />
           </div>
           <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-            {filter === 'all' 
-              ? 'No saved items yet'
-              : filter === 'item'
-              ? 'No saved items yet'
-              : 'No saved searches yet'
-            }
+            No saved items yet
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            {filter === 'all'
-              ? 'Start by searching for items and saving the ones you\'re interested in, or save your search queries for easy access.'
-              : filter === 'item'
-              ? 'Search for items and click the save button to add them to your collection.'
-              : 'Save your search queries to track price trends and set up alerts.'
-            }
+            Search for items and click the save button to add them to your collection.
           </p>
         </div>
       ) : (
         <div className="grid gap-6">
-          {filteredItems.map(savedItem => (
+          {savedItems.map(savedItem => (
             <SavedItemCard
               key={savedItem.id}
               savedItem={savedItem}

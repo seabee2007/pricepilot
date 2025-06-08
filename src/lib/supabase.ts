@@ -133,71 +133,22 @@ export async function getProfile(): Promise<Profile | null> {
 }
 
 export async function updateProfile(updates: Partial<Profile>) {
-  const user = await getCurrentUser();
+  const { data: user } = await supabase.auth.getUser();
   
-  if (!user) {
-    throw new Error('No user logged in');
+  if (!user.user) {
+    throw new Error('Not authenticated');
   }
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('profiles')
-    .update(updates)
-    .eq('id', user.id)
-    .select()
-    .single();
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.user.id);
 
   if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-// Saved Searches Functions (now consolidated into Saved Items)
-export async function getSavedSearches(): Promise<SavedItem[]> {
-  const { data, error } = await supabase
-    .from('saved_items')
-    .select('*')
-    .eq('item_type', 'search')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching saved searches:', error);
-    throw error;
-  }
-
-  return data || [];
-}
-
-export async function saveSearch(
-  query: string,
-  filters: SearchFilters,
-  priceThreshold: number
-): Promise<void> {
-  const { error } = await supabase
-    .from('saved_items')
-    .insert({
-      item_type: 'search',
-      search_query: query,
-      search_filters: filters,
-      price_alert_threshold: priceThreshold,
-    });
-
-  if (error) {
-    console.error('Error saving search:', error);
-    throw error;
-  }
-}
-
-export async function deleteSavedSearch(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('saved_items')
-    .delete()
-    .eq('id', id)
-    .eq('item_type', 'search');
-
-  if (error) {
-    console.error('Error deleting saved search:', error);
+    console.error('Error updating profile:', error);
     throw error;
   }
 }
@@ -211,21 +162,6 @@ export async function getAllSavedItems(): Promise<SavedItem[]> {
 
   if (error) {
     console.error('Error fetching saved items:', error);
-    throw error;
-  }
-
-  return data || [];
-}
-
-export async function getSavedItemsByType(itemType: 'item' | 'search'): Promise<SavedItem[]> {
-  const { data, error } = await supabase
-    .from('saved_items')
-    .select('*')
-    .eq('item_type', itemType)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error(`Error fetching saved ${itemType}s:`, error);
     throw error;
   }
 
@@ -262,33 +198,6 @@ export async function saveIndividualItem(item: ItemSummary, priceAlertThreshold?
 
   if (error) {
     console.error('Error saving individual item:', error);
-    throw error;
-  }
-}
-
-export async function saveSearchQuery(
-  query: string,
-  filters: SearchFilters,
-  priceThreshold: number
-): Promise<void> {
-  const user = await getCurrentUser();
-  
-  if (!user) {
-    throw new Error('User must be logged in to save searches');
-  }
-
-  const { error } = await supabase
-    .from('saved_items')
-    .insert({
-      user_id: user.id, // Add user_id for RLS policy
-      item_type: 'search',
-      search_query: query,
-      search_filters: filters,
-      price_alert_threshold: priceThreshold,
-    });
-
-  if (error) {
-    console.error('Error saving search query:', error);
     throw error;
   }
 }
@@ -334,22 +243,6 @@ export async function checkIfItemSaved(itemId: string): Promise<boolean> {
 
   if (error) {
     console.error('Error checking if item is saved:', error);
-    return false;
-  }
-
-  return (data?.length || 0) > 0;
-}
-
-export async function checkIfSearchSaved(query: string, filters: SearchFilters): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('saved_items')
-    .select('id')
-    .eq('item_type', 'search')
-    .eq('search_query', query)
-    .limit(1);
-
-  if (error) {
-    console.error('Error checking if search is saved:', error);
     return false;
   }
 
