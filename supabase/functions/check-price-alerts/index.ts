@@ -72,58 +72,6 @@ const getOAuthToken = async (): Promise<string> => {
   return data.access_token;
 };
 
-const buildFilterString = (filters: SavedSearch["filters"]): string => {
-  const filterParts: string[] = [];
-  
-  if (filters.conditionIds && filters.conditionIds.length > 0) {
-    filterParts.push(`conditionIds:{${filters.conditionIds.join(",")}}`);
-  }
-  
-  if (filters.freeShipping) {
-    filterParts.push("maxDeliveryCost:0");
-  }
-  
-  if (filters.sellerLocation) {
-    filterParts.push(`itemLocation:${filters.sellerLocation}`);
-  }
-  
-  if (filters.buyItNowOnly) {
-    filterParts.push("buyingOptions:{FIXED_PRICE}");
-  }
-  
-  return filterParts.join(",");
-};
-
-const searchLiveItems = async (query: string, filters: SavedSearch["filters"]): Promise<ItemSummary[]> => {
-  const token = await getOAuthToken();
-  const filterString = buildFilterString(filters);
-  
-  const url = new URL("https://api.ebay.com/buy/browse/v1/item_summary/search");
-  url.searchParams.append("q", query);
-  url.searchParams.append("sort", "price");
-  
-  if (filterString) {
-    url.searchParams.append("filter", filterString);
-  }
-  
-  url.searchParams.append("limit", "5"); // Only need a few items to check lowest price
-  
-  const response = await fetch(url.toString(), {
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`eBay API error: ${response.status} ${response.statusText}`);
-  }
-  
-  const data = await response.json();
-  return data.itemSummaries || [];
-};
-
 // Email helper function using Resend
 const sendPriceAlert = async (userId: string, query: string, newPrice: number, threshold: number, itemUrl: string, itemTitle: string) => {
   try {
@@ -300,76 +248,91 @@ const sendPriceAlert = async (userId: string, query: string, newPrice: number, t
   }
 };
 
+// eBay API helper to get current item details
+const getItemDetails = async (itemId: string): Promise<any> => {
+  const token = await getOAuthToken();
+  
+  const url = new URL("https://api.ebay.com/buy/browse/v1/item/" + encodeURIComponent(itemId));
+  
+  const response = await fetch(url.toString(), {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`eBay API error: ${response.status} ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+  return data;
+};
+
 // Main function
 const checkPriceAlerts = async () => {
-  console.log("🔍 Starting price alert check job");
+  console.log("🔍 Starting price alert check job for individual saved items");
   
   try {
-    // Get all saved items with search queries (unified table)
+    // Get all saved individual items with price alerts set
     const { data: savedItems, error } = await supabase
       .from("saved_items")
       .select("*")
-      .eq("item_type", "search")
-      .not("search_query", "is", null);
+      .eq("item_type", "item")
+      .not("item_id", "is", null)
+      .not("price_alert_threshold", "is", null);
     
     if (error) {
       throw error;
     }
     
-    console.log(`📊 Found ${savedItems?.length || 0} saved search queries to check`);
+    console.log(`📊 Found ${savedItems?.length || 0} saved items with price alerts to check`);
     
     if (!savedItems || savedItems.length === 0) {
-      console.log("No saved search queries found. Job completed.");
+      console.log("No saved items with price alerts found. Job completed.");
       return;
     }
     
     let alertsSent = 0;
-    let searchesChecked = 0;
+    let itemsChecked = 0;
     
-    // Process each saved search query
+    // Process each saved item
     for (const savedItem of savedItems) {
       try {
-        searchesChecked++;
-        console.log(`🔍 Checking search ${searchesChecked}/${savedItems.length}: "${savedItem.search_query}"`);
+        itemsChecked++;
+        console.log(`🔍 Checking item ${itemsChecked}/${savedItems.length}: "${savedItem.title}" (${savedItem.item_id})`);
         
-        // Search for current listings using the search query and filters
-        const items = await searchLiveItems(savedItem.search_query!, savedItem.search_filters || {});
+        // Get current item details from eBay
+        const itemDetails = await getItemDetails(savedItem.item_id);
         
-        if (items.length === 0) {
-          console.log(`⚠️ No items found for query: ${savedItem.search_query}`);
+        if (!itemDetails || !itemDetails.price) {
+          console.log(`⚠️ No current price found for item: ${savedItem.item_id}`);
           continue;
         }
         
-        // Find the item with the lowest price
-        let lowestPriceItem = items[0];
-        for (const item of items) {
-          if (item.price.value < lowestPriceItem.price.value) {
-            lowestPriceItem = item;
-          }
-        }
-        
-        const lowestPrice = lowestPriceItem.price.value;
+        const currentPrice = parseFloat(itemDetails.price.value) || 0;
         const threshold = savedItem.price_alert_threshold || 0;
         
-        console.log(`💰 Query: "${savedItem.search_query}" | Lowest: $${lowestPrice} | Threshold: $${threshold} | Last: $${savedItem.last_checked_price || 'N/A'}`);
-        console.log(`🔗 Lowest price item: "${lowestPriceItem.title}" - ${lowestPriceItem.itemWebUrl}`);
+        console.log(`💰 Item: "${savedItem.title}" | Current: $${currentPrice} | Threshold: $${threshold} | Last: $${savedItem.last_checked_price || 'N/A'}`);
+        console.log(`🔗 eBay URL: ${savedItem.item_url}`);
         
         // Check if price is below threshold and lower than last checked price
         if (
           threshold > 0 &&
-          lowestPrice < threshold && 
-          (!savedItem.last_checked_price || lowestPrice < savedItem.last_checked_price)
+          currentPrice < threshold && 
+          (!savedItem.last_checked_price || currentPrice < savedItem.last_checked_price)
         ) {
-          console.log(`🚨 ALERT TRIGGERED for "${savedItem.search_query}" - sending email...`);
+          console.log(`🚨 PRICE ALERT TRIGGERED for "${savedItem.title}" - sending email...`);
           
           // Send price alert with specific item details
           await sendPriceAlert(
             savedItem.user_id, 
-            savedItem.search_query!, 
-            lowestPrice, 
+            savedItem.title, 
+            currentPrice, 
             threshold,
-            lowestPriceItem.itemWebUrl,
-            lowestPriceItem.title
+            savedItem.item_url,
+            savedItem.title
           );
           alertsSent++;
         }
@@ -377,17 +340,24 @@ const checkPriceAlerts = async () => {
         // Update last_checked_price in the saved_items table
         await supabase
           .from("saved_items")
-          .update({ last_checked_price: lowestPrice })
+          .update({ last_checked_price: currentPrice })
           .eq("id", savedItem.id);
         
-      } catch (searchError) {
-        console.error(`❌ Error processing saved item ${savedItem.id} for query "${savedItem.search_query}":`, searchError);
-        // Continue with next search
+      } catch (itemError) {
+        console.error(`❌ Error processing saved item ${savedItem.id} (${savedItem.item_id}):`, itemError);
+        
+        // Check if it's an item not found error (item may have ended/been removed)
+        if (itemError.message.includes('404') || itemError.message.includes('not found')) {
+          console.log(`🗑️ Item ${savedItem.item_id} appears to have been removed from eBay`);
+          // Could optionally mark item as inactive or notify user
+        }
+        
+        // Continue with next item
       }
     }
     
     console.log(`✅ Price alert check job completed`);
-    console.log(`📊 Stats: ${searchesChecked} searches checked, ${alertsSent} alerts sent`);
+    console.log(`📊 Stats: ${itemsChecked} items checked, ${alertsSent} alerts sent`);
     
   } catch (err) {
     console.error("❌ Error in price alert check job:", err);
@@ -485,7 +455,7 @@ Deno.serve(async (req) => {
     
     // Handle test email request
     if (requestBody?.trigger === 'test-email' || requestBody?.forceEmail) {
-      console.log("📧 Testing price alerts with real data...");
+      console.log("📧 Testing price alerts with real saved item data...");
       
       try {
         // Get user from auth header - use service role client to verify token
@@ -519,36 +489,36 @@ Deno.serve(async (req) => {
           throw new Error("RESEND_API_KEY environment variable is not set");
         }
         
-        // Get user's saved search queries
+        // Get user's saved individual items
         const { data: savedItems, error: savedError } = await supabase
           .from("saved_items")
           .select("*")
           .eq("user_id", user.id)
-          .eq("item_type", "search")
-          .not("search_query", "is", null)
-          .limit(1); // Just test with their first saved search
+          .eq("item_type", "item")
+          .not("item_id", "is", null)
+          .limit(1); // Just test with their first saved item
         
         if (savedError) {
-          throw new Error(`Failed to fetch saved searches: ${savedError.message}`);
+          throw new Error(`Failed to fetch saved items: ${savedError.message}`);
         }
         
         if (!savedItems || savedItems.length === 0) {
-          console.log("📧 No saved searches found, sending general test email...");
+          console.log("📧 No saved individual items found, sending general test email...");
           
-          // Send a test email explaining they need to save searches first
+          // Send a test email explaining they need to save items first
           await sendPriceAlert(
             user.id, 
-            "No Saved Searches", 
+            "No Saved Items", 
             0, 
             0,
             "https://ebay.com",
-            "Welcome to PricePilot! Save some search queries to start receiving price alerts."
+            "Welcome to PricePilot! Save some eBay items to start receiving price alerts when their prices drop."
           );
           
           return new Response(
             JSON.stringify({ 
               success: true, 
-              message: "Test email sent! Note: You don't have any saved searches yet. Save some search queries to receive real price alerts.",
+              message: "Test email sent! Note: You don't have any saved items yet. Save some eBay items to receive real price alerts.",
               timestamp: new Date().toISOString()
             }),
             {
@@ -562,37 +532,29 @@ Deno.serve(async (req) => {
         }
         
         const savedItem = savedItems[0];
-        console.log(`📧 Testing with saved search: "${savedItem.search_query}"`);
+        console.log(`📧 Testing with saved item: "${savedItem.title}" (${savedItem.item_id})`);
         
-        // Get real current prices from eBay
-        const items = await searchLiveItems(savedItem.search_query!, savedItem.search_filters || {});
+        // Get real current price from eBay
+        const itemDetails = await getItemDetails(savedItem.item_id);
         
-        if (items.length === 0) {
-          throw new Error(`No current eBay listings found for "${savedItem.search_query}"`);
+        if (!itemDetails || !itemDetails.price) {
+          throw new Error(`No current price found for item "${savedItem.title}" (${savedItem.item_id})`);
         }
         
-        // Find the lowest price item
-        let lowestPriceItem = items[0];
-        for (const item of items) {
-          if (item.price.value < lowestPriceItem.price.value) {
-            lowestPriceItem = item;
-          }
-        }
-        
-        const currentPrice = lowestPriceItem.price.value;
+        const currentPrice = parseFloat(itemDetails.price.value) || 0;
         const threshold = savedItem.price_alert_threshold || (currentPrice + 50); // Use a threshold above current price for testing
         
-        console.log(`📧 Real data - Query: "${savedItem.search_query}", Current Price: $${currentPrice}, Test Threshold: $${threshold}`);
-        console.log(`📧 Lowest price item: "${lowestPriceItem.title}"`);
+        console.log(`📧 Real data - Item: "${savedItem.title}", Current Price: $${currentPrice}, Test Threshold: $${threshold}`);
+        console.log(`📧 Item URL: ${savedItem.item_url}`);
         
         // Send price alert with real eBay data
         await sendPriceAlert(
           user.id, 
-          savedItem.search_query!, 
+          savedItem.title, 
           currentPrice, 
           threshold,
-          lowestPriceItem.itemWebUrl,
-          lowestPriceItem.title
+          savedItem.item_url,
+          savedItem.title
         );
         
         console.log(`✅ Test email sent successfully with real eBay data for ${user.email}`);
@@ -600,7 +562,7 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             success: true, 
-            message: `Test email sent with real data for "${savedItem.search_query}"! Current lowest price: $${currentPrice}. Check your inbox.`,
+            message: `Test email sent with real data for "${savedItem.title}"! Current price: $${currentPrice}. Check your inbox.`,
             timestamp: new Date().toISOString()
           }),
           {
