@@ -3,8 +3,9 @@ import { ItemSummary, SearchMode } from '../types';
 import { formatCurrency, truncateText, getConditionName } from '../lib/utils';
 import { ArrowUp, ArrowDown, ExternalLink, Truck, Shield, Heart, HeartOff } from 'lucide-react';
 import Button from './ui/Button';
-import { saveIndividualItem, checkIfItemSaved, deleteSavedItem, getAllSavedItems } from '../lib/supabase';
+import { saveIndividualItem, checkIfItemSaved, deleteSavedItem, getAllSavedItems, parseVehicleFromQuery } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { useVehicleValueMap, extractUniqueVehicleKeys, VehicleValue } from '../lib/useVehicleValueMap';
 
 interface ResultsListProps {
   items: ItemSummary[];
@@ -17,6 +18,10 @@ const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(mode === 'buy' ? 'asc' : 'desc');
   const [savedItemIds, setSavedItemIds] = useState<Set<string>>(new Set());
   const [savingItems, setSavingItems] = useState<Set<string>>(new Set());
+
+  // 🔥 NEW: Extract unique vehicle keys and fetch values once
+  const uniqueVehicleKeys = extractUniqueVehicleKeys(items);
+  const { valueMap: vehicleValueMap, loading: vehicleValuesLoading } = useVehicleValueMap(uniqueVehicleKeys);
 
   // Check which items are already saved when component mounts
   useEffect(() => {
@@ -47,6 +52,9 @@ const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
   console.log('Is loading:', isLoading);
   console.log('Mode:', mode);
   console.log('Items is array?', Array.isArray(items));
+  console.log('🚗 Unique vehicle keys found:', uniqueVehicleKeys);
+  console.log('🚗 Vehicle values loading:', vehicleValuesLoading);
+  console.log('🚗 Vehicle value map:', vehicleValueMap);
   if (items && items.length > 0) {
     console.log('First item in ResultsList:', items[0]);
   }
@@ -191,6 +199,13 @@ const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
             const isSaved = savedItemIds.has(item.itemId);
             const isSaving = savingItems.has(item.itemId);
             
+            // 🚗 NEW: Get vehicle value data for this item
+            const vehicleInfo = parseVehicleFromQuery(item.title);
+            const vehicleKey = vehicleInfo?.make && vehicleInfo?.model && vehicleInfo?.year 
+              ? `${vehicleInfo.make}|${vehicleInfo.model}|${vehicleInfo.year}`
+              : null;
+            const vehicleValue = vehicleKey ? vehicleValueMap[vehicleKey] : null;
+            
             return (
               <div 
                 key={item.itemId} 
@@ -245,6 +260,45 @@ const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
                           </div>
                         </div>
                       </div>
+
+                      {/* 🚗 NEW: Vehicle Market Value Section */}
+                      {vehicleValue && (
+                        <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-blue-600 dark:text-blue-400 font-medium">Market Value:</span>
+                            <div className="flex gap-3 text-xs">
+                              <span className="text-red-600 dark:text-red-400">
+                                Low: {formatCurrency(vehicleValue.low || 0, vehicleValue.currency || 'USD')}
+                              </span>
+                              <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                                Avg: {formatCurrency(vehicleValue.avg || 0, vehicleValue.currency || 'USD')}
+                              </span>
+                              <span className="text-green-600 dark:text-green-400">
+                                High: {formatCurrency(vehicleValue.high || 0, vehicleValue.currency || 'USD')}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Price comparison */}
+                          {vehicleValue.avg && item.price?.value && (
+                            <div className="mt-1 text-xs">
+                              {(() => {
+                                const difference = item.price.value - vehicleValue.avg;
+                                const percentDiff = (difference / vehicleValue.avg) * 100;
+                                const isGoodDeal = difference < 0;
+                                
+                                return (
+                                  <span className={`font-medium ${isGoodDeal ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {isGoodDeal ? '📉 ' : '📈 '}
+                                    {isGoodDeal ? '' : '+'}{formatCurrency(Math.abs(difference))} 
+                                    ({isGoodDeal ? '' : '+'}{percentDiff.toFixed(1)}%) vs avg
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       
                       <div className="flex flex-wrap gap-2">
                         {item.condition && (
@@ -296,6 +350,22 @@ const ResultsList = ({ items, mode, isLoading = false }: ResultsListProps) => {
                   <div className="text-base font-bold text-gray-900 dark:text-white">
                     {formatCurrency(item.price?.value || 0, item.price?.currency || 'USD')}
                   </div>
+                  
+                  {/* 🚗 NEW: Desktop Vehicle Value Summary */}
+                  {vehicleValue && vehicleValue.avg && (
+                    <div className="mt-1 text-xs">
+                      {(() => {
+                        const difference = (item.price?.value || 0) - vehicleValue.avg;
+                        const isGoodDeal = difference < 0;
+                        
+                        return (
+                          <span className={`font-medium ${isGoodDeal ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {isGoodDeal ? '📉 Good deal' : '📈 Above market'}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
                 
                 {/* Desktop Shipping Column */}
