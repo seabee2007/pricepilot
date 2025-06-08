@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SavedItem, SavedItemIndividual } from '../types';
-import { ExternalLink, Trash2, Package, Edit, Check, X, Bell, TrendingUp, TrendingDown, DollarSign, Loader2 } from 'lucide-react';
+import { ExternalLink, Trash2, Package, Edit, Check, X, Bell, TrendingUp, TrendingDown, DollarSign, Loader2, Bug } from 'lucide-react';
 import Button from './ui/Button';
-import { updateSavedItem, parseVehicleFromQuery, getVehicleValue, VehicleValueResponse } from '../lib/supabase';
+import { updateSavedItem, parseVehicleFromQuery, getVehicleValue, VehicleValueResponse, debugPriceHistory } from '../lib/supabase';
 import { useDebounce, useDeduplicatedCallback } from '../lib/hooks';
 import toast from 'react-hot-toast';
 import PriceHistoryChart from './PriceHistoryChart';
@@ -227,6 +227,17 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
             onClick={handleDelete}
             className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
             icon={<Trash2 className="h-4 w-4" />}
+          />
+          {/* Temporary debug button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              console.log('🐛 Debug button clicked for item:', savedItem);
+              debugPriceHistory();
+            }}
+            className="text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 ml-2"
+            icon={<Bug className="h-4 w-4" />}
           />
         </div>
       </div>

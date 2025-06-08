@@ -72,8 +72,8 @@ const PriceHistoryChart = ({
         
         // Try to fetch by search_id first, then fall back to query
         if (searchId) {
-          result = await supabase.rpc('get_30d_price_history', { 
-            p_search_id: searchId 
+          result = await supabase.rpc('get_30d_price_history_by_saved_item', { 
+            p_saved_item_id: searchId 
           });
         } else if (query) {
           result = await supabase.rpc('get_30d_price_history_by_query', { 

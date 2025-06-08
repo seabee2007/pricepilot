@@ -892,3 +892,76 @@ export function parseVehicleFromQuery(query: string): Partial<VehicleValueReques
 export function getVehicleCacheStats() {
   return vehicleCache.getStats();
 }
+
+// Debug function to check what's in the price history table
+export async function debugPriceHistory() {
+  try {
+    console.log('🔍 Debugging price history data...');
+
+    // Check what's in the price_history table
+    const { data: allHistory, error: historyError } = await supabase
+      .from('price_history')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(10);
+
+    if (historyError) {
+      console.error('❌ Error fetching price history:', historyError);
+    } else {
+      console.log('📊 Recent price history entries:', allHistory);
+    }
+
+    // Check what's in saved_items
+    const { data: savedItems, error: itemsError } = await supabase
+      .from('saved_items')
+      .select('id, title, search_query, item_type, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (itemsError) {
+      console.error('❌ Error fetching saved items:', itemsError);
+    } else {
+      console.log('💾 Recent saved items:', savedItems);
+    }
+
+    // Test RPC function with a sample saved item ID
+    if (savedItems && savedItems.length > 0) {
+      const sampleItem = savedItems[0];
+      console.log(`🧪 Testing RPC with item: ${sampleItem.id} (${sampleItem.title || sampleItem.search_query})`);
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_30d_price_history_by_saved_item', {
+        p_saved_item_id: sampleItem.id
+      });
+
+      if (rpcError) {
+        console.error('❌ RPC error:', rpcError);
+      } else {
+        console.log('📈 RPC result:', rpcData);
+      }
+
+      // Also test the query-based RPC
+      if (sampleItem.title || sampleItem.search_query) {
+        const query = sampleItem.title || sampleItem.search_query;
+        const { data: queryRpcData, error: queryRpcError } = await supabase.rpc('get_30d_price_history_by_query', {
+          p_query: query
+        });
+
+        if (queryRpcError) {
+          console.error('❌ Query RPC error:', queryRpcError);
+        } else {
+          console.log('📈 Query RPC result:', queryRpcData);
+        }
+      }
+    }
+
+    return {
+      priceHistory: allHistory,
+      savedItems: savedItems,
+      message: 'Debug info logged to console'
+    };
+
+  } catch (error) {
+    console.error('💥 Debug function error:', error);
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
