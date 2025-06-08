@@ -72,7 +72,7 @@ async function getApplicationToken(): Promise<string> {
   }
 }
 
-function buildFilterString(filters: any): string {
+function buildFilterString(filters: any, mode = 'live'): string {
   const filterParts: string[] = [];
 
   // Handle condition IDs properly - eBay expects specific condition codes
@@ -91,15 +91,18 @@ function buildFilterString(filters: any): string {
     filterParts.push(`sellerLocation:{${filters.sellerLocation}}`);
   }
   
-  // IMPORTANT: Include all buying options by default for maximum results
-  // This ensures we get auctions, fixed-price listings, AND best offers
-  if (filters.buyItNowOnly) {
+  // Handle buying options based on mode
+  if (mode === 'sell' || mode === 'completed') {
+    // For sell mode, focus on completed auctions to see what items actually sold for
+    filterParts.push('buyingOptions:{AUCTION}');
+    // Note: eBay Browse API doesn't have a direct "sold listings" filter
+    // The best we can do is filter to auctions which are more likely to be completed sales
+  } else if (filters.buyItNowOnly) {
     filterParts.push('buyingOptions:{FIXED_PRICE}');
   } else if (filters.auctionOnly) {
     filterParts.push('buyingOptions:{AUCTION}');
   } else {
     // Include ALL buying options for maximum inventory coverage
-    // This will show $54,900 Vipers and $159,995 Vipers alike
     filterParts.push('buyingOptions:{FIXED_PRICE|AUCTION|BEST_OFFER}');
   }
 
@@ -546,7 +549,7 @@ Deno.serve(async (req) => {
       vehicleAspects: vehicleData
     };
 
-    const filterString = buildFilterString(searchFilters);
+    const filterString = buildFilterString(searchFilters, mode);
     
     // Handle compatibility filter - support both object and string formats
     let compatibilityFilter = '';
@@ -582,11 +585,8 @@ Deno.serve(async (req) => {
       ? 'https://api.sandbox.ebay.com/buy/browse/v1/item_summary'
       : 'https://api.ebay.com/buy/browse/v1/item_summary';
       
-    // Map both 'sell' and 'completed' modes to the /completed endpoint
-    const completedModes = new Set(['sell', 'completed']);
-    const baseUrl = completedModes.has(mode)
-      ? `${baseApiUrl}/completed`
-      : `${baseApiUrl}/search`;
+    // All modes use the same /search endpoint - completed listings are filtered via buyingOptions
+    const baseUrl = `${baseApiUrl}/search`;
     
     const searchUrl = new URL(baseUrl);
     
