@@ -42,7 +42,6 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate }: SavedItemCardProps) =>
   // Deduplicated vehicle value fetcher
   const fetchVehicleValue = useDeduplicatedCallback(
     async (make: string, model: string, year: number) => {
-      console.log(`🚗 Fetching vehicle value for: ${make} ${model} ${year}`);
       return await getVehicleValue({
         make,
         model,
