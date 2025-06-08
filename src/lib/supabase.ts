@@ -92,6 +92,105 @@ export interface VehicleHistoryPoint {
   data_points: number;
 }
 
+// Simple market value cache outside the class for immediate access
+const marketValueCache = new Map<string, { data: VehicleValueResponse; timestamp: number }>();
+const CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours
+
+// Load cache from localStorage on module load
+const loadCacheFromStorage = () => {
+  try {
+    const stored = localStorage.getItem('pricepilot_vehicle_cache');
+    if (stored) {
+      const data = JSON.parse(stored);
+      Object.entries(data).forEach(([key, value]: [string, any]) => {
+        if (value.timestamp && (Date.now() - value.timestamp) < CACHE_DURATION) {
+          marketValueCache.set(key, value);
+        }
+      });
+      console.log(`📋 Loaded ${marketValueCache.size} vehicle values from localStorage`);
+    }
+  } catch (error) {
+    console.warn('Failed to load vehicle cache from storage:', error);
+  }
+};
+
+// Save cache to localStorage
+const saveCacheToStorage = () => {
+  try {
+    const data = Object.fromEntries(marketValueCache);
+    localStorage.setItem('pricepilot_vehicle_cache', JSON.stringify(data));
+  } catch (error) {
+    console.warn('Failed to save vehicle cache to storage:', error);
+  }
+};
+
+// Generate cache key
+const generateCacheKey = (make: string, model: string, year: number): string => {
+  return `${make.toLowerCase()}|${model.toLowerCase().replace(/\s+/g, '-')}|${year}`;
+};
+
+// Initialize cache
+loadCacheFromStorage();
+
+// Clean up expired entries every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  let cleared = 0;
+  
+  for (const [key, value] of marketValueCache.entries()) {
+    if ((now - value.timestamp) >= CACHE_DURATION) {
+      marketValueCache.delete(key);
+      cleared++;
+    }
+  }
+  
+  if (cleared > 0) {
+    console.log(`🧹 Cleared ${cleared} expired vehicle values from cache`);
+    saveCacheToStorage();
+  }
+}, 30 * 60 * 1000);
+
+// Master function that checks cache first, only scrapes on miss
+async function fetchMarketValue({ make, model, year, mileage, trim, zipCode }: VehicleValueRequest): Promise<VehicleValueResponse> {
+  const key = generateCacheKey(make, model, year);
+  
+  // Check cache first - short circuit on hit
+  const cached = marketValueCache.get(key);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+    console.log(`📋 Cache HIT for ${key}`);
+    return { ...cached.data, cached: true };
+  }
+
+  // Only log scraping messages on cache miss
+  console.log(`📋 Cache MISS for ${key}`);
+  console.log(`🚗 Fetching vehicle market value via scraping for:`, { make, model, year, mileage, trim, zipCode });
+
+  // Perform the actual scrape
+  const { data, error } = await supabase.functions.invoke('scrape-vehicle-market-value', {
+    body: { make, model, year, mileage, trim, zipCode }
+  });
+
+  if (error) {
+    console.error(`❌ Vehicle market value error for ${key}:`, error);
+    throw new Error(error.message || 'Failed to get vehicle market value');
+  }
+
+  if (!data.success) {
+    throw new Error(data.error || 'Vehicle market value lookup failed');
+  }
+
+  console.log(`✅ Vehicle market value SUCCESS for ${key}:`, data);
+  
+  // Cache the successful result
+  marketValueCache.set(key, {
+    data: data as VehicleValueResponse,
+    timestamp: Date.now()
+  });
+  saveCacheToStorage();
+
+  return data as VehicleValueResponse;
+}
+
 // Enhanced Vehicle Value Cache with localStorage persistence
 class VehicleValueCacheManager {
   private cache = new Map<string, { data: VehicleValueResponse; timestamp: number }>();
@@ -233,11 +332,225 @@ class VehicleValueCacheManager {
   }
 }
 
-// Singleton cache manager
+// Singleton cache manager (keeping for backward compatibility)
 const vehicleCache = new VehicleValueCacheManager();
 
-// Clean up expired entries every 30 minutes
-setInterval(() => vehicleCache.clearExpired(), 30 * 60 * 1000);
+// Vehicle Value Functions - New Scraping Approach with Enhanced Caching
+export async function getVehicleMarketValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
+  try {
+    return await fetchMarketValue(request);
+  } catch (error) {
+    console.error('💥 Error getting vehicle market value:', error);
+    throw error;
+  }
+}
+
+// Legacy function for backward compatibility
+export async function getVehicleValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
+  try {
+    const scrapingResult = await fetchMarketValue(request);
+    
+    // Convert scraping result to legacy format for backward compatibility
+    return {
+      ...scrapingResult,
+      value: scrapingResult.avg || 0 // Use avg as the single value for legacy compatibility
+    };
+  } catch (error) {
+    console.error('💥 Vehicle value lookup failed:', error);
+    throw error;
+  }
+}
+
+export async function getVehicleHistory(make: string, model: string, year: number, days: number = 30): Promise<VehicleHistoryPoint[]> {
+  try {
+    console.log(`📊 Fetching vehicle history for ${year} ${make} ${model} (${days} days)`);
+
+    const { data, error } = await supabase.rpc('get_vehicle_value_history', {
+      p_make: make,
+      p_model: model,
+      p_year: year,
+      p_days: days
+    });
+
+    if (error) {
+      console.error('❌ Vehicle history error:', error);
+      throw error;
+    }
+
+    console.log('✅ Vehicle history response:', data);
+    
+    return (data || []).map((item: any) => ({
+      day: item.day,
+      avg_value: parseFloat(item.avg_value) || 0,
+      data_points: parseInt(item.data_points) || 0
+    }));
+
+  } catch (error) {
+    console.error('💥 Error getting vehicle history:', error);
+    throw error;
+  }
+}
+
+// Helper function to extract vehicle info from search query
+export function parseVehicleFromQuery(query: string): Partial<VehicleValueRequest> | null {
+  try {
+    console.log('🔍 Parsing vehicle from query:', query);
+    
+    // Basic regex patterns to extract make, model, year
+    const yearMatch = query.match(/\b(19|20)\d{2}\b/);
+    const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
+
+    // Common car makes (extend this list as needed)
+    const makes = [
+      'Audi', 'BMW', 'Mercedes-Benz', 'Mercedes', 'Ford', 'Chevrolet', 'Toyota', 'Honda', 'Nissan',
+      'Volkswagen', 'Hyundai', 'Subaru', 'Mazda', 'Volvo', 'Lexus', 'Acura',
+      'Infiniti', 'Cadillac', 'Lincoln', 'Jeep', 'Dodge', 'Chrysler', 'Ram',
+      'GMC', 'Buick', 'Pontiac', 'Oldsmobile', 'Saturn', 'Saab', 'Jaguar',
+      'Land Rover', 'Range Rover', 'Porsche', 'Ferrari', 'Lamborghini', 'Bentley',
+      'Rolls Royce', 'Aston Martin', 'McLaren', 'Lotus', 'Maserati', 'Alfa Romeo'
+    ];
+
+    let make: string | undefined;
+    let model: string | undefined;
+
+    // Find make in query - prioritize longer matches (Mercedes-Benz over Mercedes)
+    const sortedMakes = makes.sort((a, b) => b.length - a.length);
+    for (const m of sortedMakes) {
+      const regex = new RegExp(`\\b${m.replace('-', '\\-')}\\b`, 'i');
+      if (regex.test(query)) {
+        make = m;
+        break;
+      }
+    }
+
+    console.log('🔍 Found make:', make, 'year:', year);
+
+    if (make && year) {
+      const makeIndex = query.toLowerCase().indexOf(make.toLowerCase());
+      const yearIndex = query.indexOf(year.toString());
+      
+      let modelPart = '';
+      
+      // Handle both cases: year before make (1967 Ford Mustang) and make before year (Ford 2025 F-150)
+      if (yearIndex < makeIndex) {
+        // Year comes before make: "1967 Ford Mustang"
+        // Model is everything after make, limited to reasonable length
+        modelPart = query.substring(makeIndex + make.length).trim();
+      } else {
+        // Make comes before year: "Ford 2025 F-150"
+        // Model is everything after make, before year
+        modelPart = query.substring(makeIndex + make.length, yearIndex).trim();
+      }
+      
+      // Clean up model name - preserve hyphens and alphanumeric, remove common words
+      model = modelPart
+        .replace(/\b(for sale|used|new|car|auto|vehicle|truck|great|driving|convertible|crate|motor|reupholstered|extra|parts|included|see|video)\b/gi, '')
+        .replace(/[^\w\s-]/g, ' ') // Replace non-alphanumeric except hyphens and spaces
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .slice(0, 3) // Limit to first 3 words for model
+        .join(' ');
+      
+      // Special handling for Mercedes-Benz models
+      if (make === 'Mercedes-Benz' && model.startsWith('-Benz')) {
+        model = model.replace('-Benz', '').trim();
+      }
+      
+      console.log('🔍 Extracted model part:', modelPart, '-> cleaned:', model);
+      
+      if (model && model.length > 0) {
+        const result = { make, model, year };
+        console.log('✅ Successfully parsed vehicle:', result);
+        return result;
+      }
+    }
+
+    console.log('❌ Could not parse vehicle from query');
+    return null;
+  } catch (error) {
+    console.error('Error parsing vehicle from query:', error);
+    return null;
+  }
+}
+
+// Debug function to check cache stats
+export function getVehicleCacheStats() {
+  return vehicleCache.getStats();
+}
+
+// Debug function to check what's in the price history table
+export async function debugPriceHistory() {
+  try {
+    console.log('🔍 Debugging price history data...');
+
+    // Check what's in the price_history table
+    const { data: allHistory, error: historyError } = await supabase
+      .from('price_history')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(10);
+
+    if (historyError) {
+      console.error('❌ Error fetching price history:', historyError);
+    } else {
+      console.log('📊 Recent price history entries:', allHistory);
+    }
+
+    // Check what's in saved_items
+    const { data: savedItems, error: itemsError } = await supabase
+      .from('saved_items')
+      .select('id, title, search_query, item_type, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (itemsError) {
+      console.error('❌ Error fetching saved items:', itemsError);
+    } else {
+      console.log('💾 Recent saved items:', savedItems);
+    }
+
+    // Test RPC function with a sample saved item ID
+    if (savedItems && savedItems.length > 0) {
+      const sampleItem = savedItems[0];
+      console.log(`🧪 Testing RPC with item: ${sampleItem.id} (${sampleItem.title || sampleItem.search_query})`);
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_30d_price_history_by_saved_item', {
+        p_saved_item_id: sampleItem.id
+      });
+
+      if (rpcError) {
+        console.error('❌ RPC error:', rpcError);
+      } else {
+        console.log('📈 RPC result:', rpcData);
+      }
+
+      // Also test the query-based RPC
+      if (sampleItem.title || sampleItem.search_query) {
+        const query = sampleItem.title || sampleItem.search_query;
+        const { data: queryRpcData, error: queryRpcError } = await supabase.rpc('get_30d_price_history_by_query', {
+          p_query: query
+        });
+
+        if (queryRpcError) {
+          console.error('❌ Query RPC error:', queryRpcError);
+        } else {
+          console.log('📈 Query RPC result:', queryRpcData);
+        }
+      }
+    }
+
+    return {
+      priceHistory: allHistory,
+      savedItems: savedItems,
+      message: 'Debug info logged to console'
+    };
+
+  } catch (error) {
+    console.error('💥 Debug function error:', error);
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
 
 // Authentication Functions
 export async function signUp({ email, password, fullName }: SignUpData) {
@@ -450,8 +763,8 @@ export async function get30DayPriceHistory(searchId?: string, query?: string): P
     
     if (searchId) {
       console.log('Fetching 30-day history by search ID:', searchId);
-      result = await supabase.rpc('get_30d_price_history', { 
-        p_search_id: searchId 
+      result = await supabase.rpc('get_30d_price_history_by_saved_item', { 
+        p_saved_item_id: searchId 
       });
     } else if (query) {
       console.log('Fetching 30-day history by query:', query);
@@ -744,224 +1057,5 @@ export async function sendTestEmail(): Promise<{ success: boolean; message: stri
       success: false, 
       message: `Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}` 
     };
-  }
-}
-
-// Vehicle Value Functions - New Scraping Approach with Enhanced Caching
-export async function getVehicleMarketValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
-  try {
-    console.log('🚗 Fetching vehicle market value via scraping for:', request);
-    return await vehicleCache.fetch(request);
-  } catch (error) {
-    console.error('💥 Error getting vehicle market value:', error);
-    throw error;
-  }
-}
-
-// Legacy function for backward compatibility
-export async function getVehicleValue(request: VehicleValueRequest): Promise<VehicleValueResponse> {
-  try {
-    console.log('🚗 Using legacy vehicle value function - redirecting to scraping approach');
-    const scrapingResult = await getVehicleMarketValue(request);
-    
-    // Convert scraping result to legacy format for backward compatibility
-    return {
-      ...scrapingResult,
-      value: scrapingResult.avg || 0 // Use avg as the single value for legacy compatibility
-    };
-  } catch (error) {
-    console.error('💥 Vehicle value lookup failed:', error);
-    throw error;
-  }
-}
-
-export async function getVehicleHistory(make: string, model: string, year: number, days: number = 30): Promise<VehicleHistoryPoint[]> {
-  try {
-    console.log(`📊 Fetching vehicle history for ${year} ${make} ${model} (${days} days)`);
-
-    const { data, error } = await supabase.rpc('get_vehicle_value_history', {
-      p_make: make,
-      p_model: model,
-      p_year: year,
-      p_days: days
-    });
-
-    if (error) {
-      console.error('❌ Vehicle history error:', error);
-      throw error;
-    }
-
-    console.log('✅ Vehicle history response:', data);
-    
-    return (data || []).map((item: any) => ({
-      day: item.day,
-      avg_value: parseFloat(item.avg_value) || 0,
-      data_points: parseInt(item.data_points) || 0
-    }));
-
-  } catch (error) {
-    console.error('💥 Error getting vehicle history:', error);
-    throw error;
-  }
-}
-
-// Helper function to extract vehicle info from search query
-export function parseVehicleFromQuery(query: string): Partial<VehicleValueRequest> | null {
-  try {
-    console.log('🔍 Parsing vehicle from query:', query);
-    
-    // Basic regex patterns to extract make, model, year
-    const yearMatch = query.match(/\b(19|20)\d{2}\b/);
-    const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
-
-    // Common car makes (extend this list as needed)
-    const makes = [
-      'Audi', 'BMW', 'Mercedes-Benz', 'Mercedes', 'Ford', 'Chevrolet', 'Toyota', 'Honda', 'Nissan',
-      'Volkswagen', 'Hyundai', 'Subaru', 'Mazda', 'Volvo', 'Lexus', 'Acura',
-      'Infiniti', 'Cadillac', 'Lincoln', 'Jeep', 'Dodge', 'Chrysler', 'Ram',
-      'GMC', 'Buick', 'Pontiac', 'Oldsmobile', 'Saturn', 'Saab', 'Jaguar',
-      'Land Rover', 'Range Rover', 'Porsche', 'Ferrari', 'Lamborghini', 'Bentley',
-      'Rolls Royce', 'Aston Martin', 'McLaren', 'Lotus', 'Maserati', 'Alfa Romeo'
-    ];
-
-    let make: string | undefined;
-    let model: string | undefined;
-
-    // Find make in query - prioritize longer matches (Mercedes-Benz over Mercedes)
-    const sortedMakes = makes.sort((a, b) => b.length - a.length);
-    for (const m of sortedMakes) {
-      const regex = new RegExp(`\\b${m.replace('-', '\\-')}\\b`, 'i');
-      if (regex.test(query)) {
-        make = m;
-        break;
-      }
-    }
-
-    console.log('🔍 Found make:', make, 'year:', year);
-
-    if (make && year) {
-      const makeIndex = query.toLowerCase().indexOf(make.toLowerCase());
-      const yearIndex = query.indexOf(year.toString());
-      
-      let modelPart = '';
-      
-      // Handle both cases: year before make (1967 Ford Mustang) and make before year (Ford 2025 F-150)
-      if (yearIndex < makeIndex) {
-        // Year comes before make: "1967 Ford Mustang"
-        // Model is everything after make, limited to reasonable length
-        modelPart = query.substring(makeIndex + make.length).trim();
-      } else {
-        // Make comes before year: "Ford 2025 F-150"
-        // Model is everything after make, before year
-        modelPart = query.substring(makeIndex + make.length, yearIndex).trim();
-      }
-      
-      // Clean up model name - preserve hyphens and alphanumeric, remove common words
-      model = modelPart
-        .replace(/\b(for sale|used|new|car|auto|vehicle|truck|great|driving|convertible|crate|motor|reupholstered|extra|parts|included|see|video)\b/gi, '')
-        .replace(/[^\w\s-]/g, ' ') // Replace non-alphanumeric except hyphens and spaces
-        .replace(/\s+/g, ' ')
-        .trim()
-        .split(' ')
-        .slice(0, 3) // Limit to first 3 words for model
-        .join(' ');
-      
-      // Special handling for Mercedes-Benz models
-      if (make === 'Mercedes-Benz' && model.startsWith('-Benz')) {
-        model = model.replace('-Benz', '').trim();
-      }
-      
-      console.log('🔍 Extracted model part:', modelPart, '-> cleaned:', model);
-      
-      if (model && model.length > 0) {
-        const result = { make, model, year };
-        console.log('✅ Successfully parsed vehicle:', result);
-        return result;
-      }
-    }
-
-    console.log('❌ Could not parse vehicle from query');
-    return null;
-  } catch (error) {
-    console.error('Error parsing vehicle from query:', error);
-    return null;
-  }
-}
-
-// Debug function to check cache stats
-export function getVehicleCacheStats() {
-  return vehicleCache.getStats();
-}
-
-// Debug function to check what's in the price history table
-export async function debugPriceHistory() {
-  try {
-    console.log('🔍 Debugging price history data...');
-
-    // Check what's in the price_history table
-    const { data: allHistory, error: historyError } = await supabase
-      .from('price_history')
-      .select('*')
-      .order('timestamp', { ascending: false })
-      .limit(10);
-
-    if (historyError) {
-      console.error('❌ Error fetching price history:', historyError);
-    } else {
-      console.log('📊 Recent price history entries:', allHistory);
-    }
-
-    // Check what's in saved_items
-    const { data: savedItems, error: itemsError } = await supabase
-      .from('saved_items')
-      .select('id, title, search_query, item_type, created_at')
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    if (itemsError) {
-      console.error('❌ Error fetching saved items:', itemsError);
-    } else {
-      console.log('💾 Recent saved items:', savedItems);
-    }
-
-    // Test RPC function with a sample saved item ID
-    if (savedItems && savedItems.length > 0) {
-      const sampleItem = savedItems[0];
-      console.log(`🧪 Testing RPC with item: ${sampleItem.id} (${sampleItem.title || sampleItem.search_query})`);
-
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_30d_price_history_by_saved_item', {
-        p_saved_item_id: sampleItem.id
-      });
-
-      if (rpcError) {
-        console.error('❌ RPC error:', rpcError);
-      } else {
-        console.log('📈 RPC result:', rpcData);
-      }
-
-      // Also test the query-based RPC
-      if (sampleItem.title || sampleItem.search_query) {
-        const query = sampleItem.title || sampleItem.search_query;
-        const { data: queryRpcData, error: queryRpcError } = await supabase.rpc('get_30d_price_history_by_query', {
-          p_query: query
-        });
-
-        if (queryRpcError) {
-          console.error('❌ Query RPC error:', queryRpcError);
-        } else {
-          console.log('📈 Query RPC result:', queryRpcData);
-        }
-      }
-    }
-
-    return {
-      priceHistory: allHistory,
-      savedItems: savedItems,
-      message: 'Debug info logged to console'
-    };
-
-  } catch (error) {
-    console.error('💥 Debug function error:', error);
-    return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
