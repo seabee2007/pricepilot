@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { VehicleValueRequest, VehicleValueResponse, VehicleHistoryPoint, getVehicleMarketValue, getVehicleHistory } from '../lib/supabase';
 import { TrendingUp, TrendingDown, DollarSign, Calendar, Loader2, AlertCircle } from 'lucide-react';
 import Button from './ui/Button';
+import { formatTimestamp, formatCurrency } from '../lib/utils';
 
 interface VehicleValueCardProps {
   initialRequest?: Partial<VehicleValueRequest>;
@@ -22,6 +23,7 @@ const VehicleValueCard = ({ initialRequest, onValueUpdate }: VehicleValueCardPro
   const [history, setHistory] = useState<VehicleHistoryPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trend, setTrend] = useState<{ direction: 'up' | 'down' | 'stable'; percentChange: number } | null>(null);
 
   const handleLookupValue = async () => {
     if (!request.make || !request.model || !request.year) {
@@ -45,9 +47,21 @@ const VehicleValueCard = ({ initialRequest, onValueUpdate }: VehicleValueCardPro
       try {
         const historyData = await getVehicleHistory(request.make, request.model, request.year);
         setHistory(historyData);
+        
+        // Calculate trend if we have enough history
+        if (historyData.length >= 2) {
+          const latest = historyData[historyData.length - 1];
+          const previous = historyData[historyData.length - 2];
+          const percentChange = ((latest.avg_value - previous.avg_value) / previous.avg_value) * 100;
+          
+          setTrend({
+            direction: percentChange > 1 ? 'up' : percentChange < -1 ? 'down' : 'stable',
+            percentChange
+          });
+        }
       } catch (historyError) {
-        console.warn('Could not fetch history data:', historyError);
-        // Continue without history data
+        console.warn('Could not fetch vehicle history:', historyError);
+        // Don't set error state for history failures, just log it
       }
 
     } catch (err) {
@@ -58,34 +72,24 @@ const VehicleValueCard = ({ initialRequest, onValueUpdate }: VehicleValueCardPro
     }
   };
 
-  const formatCurrency = (value: number, currency: string = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
   const calculateTrend = () => {
     if (history.length < 2) return null;
     
-    const recent = history[history.length - 1];
-    const older = history[0];
-    
-    if (!recent || !older) return null;
-    
-    const change = recent.avg_value - older.avg_value;
-    const percentChange = (change / older.avg_value) * 100;
+    const latest = history[history.length - 1];
+    const previous = history[history.length - 2];
+    const percentChange = ((latest.avg_value - previous.avg_value) / previous.avg_value) * 100;
     
     return {
-      change,
-      percentChange,
-      direction: change > 0 ? 'up' : change < 0 ? 'down' : 'neutral'
+      direction: percentChange > 1 ? 'up' : percentChange < -1 ? 'down' : 'stable' as const,
+      percentChange
     };
   };
 
-  const trend = calculateTrend();
+  useEffect(() => {
+    if (initialRequest?.make && initialRequest?.model && initialRequest?.year) {
+      handleLookupValue();
+    }
+  }, []);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 space-y-6">
@@ -294,7 +298,7 @@ const VehicleValueCard = ({ initialRequest, onValueUpdate }: VehicleValueCardPro
           )}
           
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            <p>Data from {vehicleValue.source === 'web_scraping' ? 'AutoTrader, Cars.com, eBay Motors, CarGurus via Web Scraping' : 'RapidAPI Vehicle Pricing'} • Last updated: {new Date(vehicleValue.timestamp).toLocaleString()}</p>
+            <p>Data from {vehicleValue.source === 'web_scraping' ? 'AutoTrader, Cars.com, eBay Motors, CarGurus via Web Scraping' : 'RapidAPI Vehicle Pricing'} • Last updated: {formatTimestamp(vehicleValue.timestamp)}</p>
           </div>
         </div>
       )}

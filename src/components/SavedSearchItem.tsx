@@ -5,6 +5,7 @@ import Button from './ui/Button';
 import { updateSavedItem, parseVehicleFromQuery } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { VehicleValue } from '../lib/useVehicleValueMap';
+import { formatCurrency, formatDate } from '../lib/utils';
 
 interface SavedItemCardProps {
   savedItem: SavedItem;
@@ -93,15 +94,6 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate, vehicleValue }: SavedIte
       vehicleValue
     });
   }
-
-  const formatCurrency = (value: number, currency: string = 'USD') => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
 
   return (
     <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden transition-all hover:shadow-md">
@@ -291,7 +283,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate, vehicleValue }: SavedIte
                     )}
                     
                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                      Data from {vehicleValue.source === 'web_scraping' ? 'AutoTrader, Cars.com, eBay Motors, CarGurus via Web Scraping' : 'RapidAPI'} • Updated: {vehicleValue.timestamp ? new Date(vehicleValue.timestamp).toLocaleDateString() : 'Unknown'}
+                      Data from {vehicleValue.source === 'web_scraping' ? 'AutoTrader, Cars.com, eBay Motors, CarGurus via Web Scraping' : 'RapidAPI'} • Updated: {formatDate(vehicleValue.timestamp)}
                     </div>
                   </div>
                 ) : (
@@ -323,7 +315,7 @@ const SavedItemCard = ({ savedItem, onDelete, onUpdate, vehicleValue }: SavedIte
       {/* Actions */}
       <div className="p-4 flex justify-between items-center">
         <div className="text-xs text-gray-500 dark:text-gray-400">
-          Saved {new Date(savedItem.created_at).toLocaleDateString()}
+          Saved {formatDate(savedItem.created_at)}
         </div>
         <a
           href={savedItem.item_url}

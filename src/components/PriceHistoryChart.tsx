@@ -88,14 +88,39 @@ const PriceHistoryChart = ({
           console.error('Error fetching price history:', result.error);
           // Fallback to legacy data if RPC fails
           if (data && data.length > 0) {
-            const legacyData = data.map(item => ({
-              day: format(new Date(item.timestamp), 'yyyy-MM-dd'),
-              low_price: item.avg_price,
-              high_price: item.avg_price,
-              avg_price: item.avg_price,
-              data_points: 1,
-              formatted_day: format(new Date(item.timestamp), 'MMM dd')
-            }));
+            const legacyData = data.map(item => {
+              // Defensive date parsing for legacy data
+              const timestamp = item.timestamp;
+              let dayValue: string;
+              let formattedDay: string;
+              
+              try {
+                const date = new Date(timestamp);
+                if (isNaN(date.getTime())) {
+                  // If timestamp is invalid, use current date as fallback
+                  const fallbackDate = new Date();
+                  dayValue = format(fallbackDate, 'yyyy-MM-dd');
+                  formattedDay = format(fallbackDate, 'MMM dd');
+                } else {
+                  dayValue = format(date, 'yyyy-MM-dd');
+                  formattedDay = format(date, 'MMM dd');
+                }
+              } catch (error) {
+                // If any error occurs, use current date as fallback
+                const fallbackDate = new Date();
+                dayValue = format(fallbackDate, 'yyyy-MM-dd');
+                formattedDay = format(fallbackDate, 'MMM dd');
+              }
+              
+              return {
+                day: dayValue,
+                low_price: item.avg_price,
+                high_price: item.avg_price,
+                avg_price: item.avg_price,
+                data_points: 1,
+                formatted_day: formattedDay
+              };
+            });
             setChartData(legacyData);
             calculatePriceStats(legacyData);
           } else {
