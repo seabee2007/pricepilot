@@ -168,54 +168,85 @@ function buildCategoryPath(node: TaxonomyNode, parentPath: string = ''): string 
 }
 
 /**
+ * Unwrap a taxonomy node that may be wrapped with a category property
+ */
+function unwrapNode(node: any): { 
+  unwrappedNode: TaxonomyNode | null; 
+  wrapperChildren: any[] 
+} {
+  // If node has a category property, it's a wrapper
+  if (node && node.category) {
+    return {
+      unwrappedNode: {
+        categoryId: node.category.categoryId,
+        categoryName: node.category.categoryName,
+        categoryTreeNodeLevel: node.category.categoryTreeNodeLevel,
+        parentCategoryTreeNodeId: node.category.parentCategoryTreeNodeId,
+        leafCategoryTreeNode: node.category.leafCategoryTreeNode,
+        childCategoryTreeNodes: node.category.childCategoryTreeNodes || []
+      },
+      wrapperChildren: node.childCategoryTreeNodes || []
+    };
+  }
+  
+  // Otherwise, treat as a direct node
+  return {
+    unwrappedNode: node,
+    wrapperChildren: node?.childCategoryTreeNodes || []
+  };
+}
+
+/**
  * Recursively traverse taxonomy tree and extract leaf categories
  */
 function extractLeafCategories(
-  node: TaxonomyNode, 
+  node: any, 
   parentPath: string = '',
   level: number = 0
 ): CategoryDef[] {
   const categories: CategoryDef[] = [];
   
-  // Skip if node is invalid
-  if (!node || !node.categoryId || !node.categoryName) {
-    console.warn('⚠️ Skipping invalid category node:', node);
+  // Unwrap the node to get the real category data
+  const { unwrappedNode, wrapperChildren } = unwrapNode(node);
+  
+  // Skip if unwrapped node is invalid
+  if (!unwrappedNode || !unwrappedNode.categoryId || !unwrappedNode.categoryName) {
     return categories;
   }
   
-  const currentPath = buildCategoryPath(node, parentPath);
+  const currentPath = buildCategoryPath(unwrappedNode, parentPath);
   
   // Skip excluded categories (motors, etc.)
-  if (EXCLUDED_CATEGORIES.has(node.categoryId)) {
-    console.log(`🚫 Skipping excluded category: ${node.categoryName} (${node.categoryId})`);
+  if (EXCLUDED_CATEGORIES.has(unwrappedNode.categoryId)) {
+    console.log(`🚫 Skipping excluded category: ${unwrappedNode.categoryName} (${unwrappedNode.categoryId})`);
     return categories;
   }
   
   // If this is a leaf node, add it to our categories
-  if (node.leafCategoryTreeNode || !node.childCategoryTreeNodes || node.childCategoryTreeNodes.length === 0) {
+  if (unwrappedNode.leafCategoryTreeNode || wrapperChildren.length === 0) {
     try {
-      const keywords = generateKeywords(node.categoryName, currentPath);
+      const keywords = generateKeywords(unwrappedNode.categoryName, currentPath);
       
       categories.push({
-        categoryId: node.categoryId,
-        categoryName: node.categoryName,
+        categoryId: unwrappedNode.categoryId,
+        categoryName: unwrappedNode.categoryName,
         categoryPath: currentPath,
         keywords,
         level,
-        parentId: node.parentCategoryTreeNodeId
+        parentId: unwrappedNode.parentCategoryTreeNodeId
       });
     } catch (error) {
-      console.warn('⚠️ Error processing category keywords:', node.categoryName, error);
+      console.warn('⚠️ Error processing category keywords:', unwrappedNode.categoryName, error);
     }
   }
   
-  // Recursively process children
-  if (node.childCategoryTreeNodes && Array.isArray(node.childCategoryTreeNodes)) {
-    for (const child of node.childCategoryTreeNodes) {
+  // Recursively process children from the wrapper level
+  if (wrapperChildren && Array.isArray(wrapperChildren)) {
+    for (const child of wrapperChildren) {
       try {
         categories.push(...extractLeafCategories(child, currentPath, level + 1));
       } catch (error) {
-        console.warn('⚠️ Error processing child category:', child?.categoryName, error);
+        console.warn('⚠️ Error processing child category:', child?.category?.categoryName || child?.categoryName, error);
       }
     }
   }
